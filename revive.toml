@@ -22,8 +22,6 @@ enableAllRules = true
     Disabled = true
 [rule.unused-receiver]
     Disabled = true
-[rule.exported]
-    Disabled = true
 [rule.banned-characters]
     Disabled = true
 

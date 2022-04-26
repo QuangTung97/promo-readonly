@@ -5,6 +5,8 @@ import (
 	"fmt"
 )
 
+//go:generate moq -out dash_mocks_test.go . MemTable CacheClient CachePipeline Database
+
 // MemTable for in memory hash table storing size log (with eviction)
 type MemTable interface {
 	// GetNum may not return entry that it just set
@@ -132,14 +134,19 @@ func (s *sessionImpl) New(namespace string, db Database) Hash {
 
 // SelectEntries ...
 func (h *hashImpl) SelectEntries(ctx context.Context, hash uint32) func() ([]Entry, error) {
-	sizeLog, ok := h.mem.GetNum(h.namespace)
+	sizeLogNum, ok := h.mem.GetNum(h.namespace)
 	if !ok {
 
 	}
+	sizeLog := int(sizeLogNum)
 
 	sizeLogFn := h.pipeline.LeaseGet(h.sizeLogKey)
-	bucketFn1 := h.pipeline.Get(fmt.Sprintf("%s:%d:%d", h.namespace, sizeLog-1, hash))
-	bucketFn2 := h.pipeline.Get(fmt.Sprintf("%s:%d:%d", h.namespace, sizeLog, hash))
+
+	key1 := fmt.Sprintf("%s:%d:%x", h.namespace, sizeLog-1, startOfSlot(hash, sizeLog-1))
+	key2 := fmt.Sprintf("%s:%d:%x", h.namespace, sizeLog, startOfSlot(hash, sizeLog))
+
+	bucketFn1 := h.pipeline.Get(key1)
+	bucketFn2 := h.pipeline.Get(key2)
 
 	return func() ([]Entry, error) {
 		newSizeLogOutput, err := sizeLogFn()

@@ -86,3 +86,14 @@ func TestUnmarshal_Error__Missing_Data(t *testing.T) {
 	_, err := unmarshalEntries([]byte{1, 0x5, 0x6, 0x7, 0x8, 3, 0xa, 0xb})
 	assert.Equal(t, errors.New("unmarshal entries: missing data"), err)
 }
+
+func TestStartOfSlot(t *testing.T) {
+	hash := startOfSlot(0xf2345678, 2)
+	assert.Equal(t, uint32(0xc0000000), hash)
+
+	hash = startOfSlot(0xf2345678, 4)
+	assert.Equal(t, uint32(0xf0000000), hash)
+
+	hash = startOfSlot(0xf2345678, 0)
+	assert.Equal(t, uint32(0), hash)
+}

@@ -73,3 +73,8 @@ func marshalEntries(entries []Entry) []byte {
 
 	return buf.Bytes()
 }
+
+func startOfSlot(hash uint32, sizeLog int) uint32 {
+	mask := uint32(0xffffffff << (32 - sizeLog))
+	return hash & mask
+}

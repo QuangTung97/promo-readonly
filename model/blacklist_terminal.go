@@ -7,10 +7,10 @@ import (
 
 // BlacklistTerminal ...
 type BlacklistTerminal struct {
-	Status       BlacklistTerminalStatus `db:"status"`
 	Hash         uint32                  `db:"hash"`
 	MerchantCode string                  `db:"merchant_code"`
 	TerminalCode string                  `db:"terminal_code"`
+	Status       BlacklistTerminalStatus `db:"status"`
 	StartTime    sql.NullTime            `db:"start_time"`
 	EndTime      sql.NullTime            `db:"end_time"`
 

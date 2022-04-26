@@ -7,9 +7,9 @@ import (
 
 // BlacklistMerchant ...
 type BlacklistMerchant struct {
-	Status       BlacklistMerchantStatus `db:"status"`
 	Hash         uint32                  `db:"hash"`
 	MerchantCode string                  `db:"merchant_code"`
+	Status       BlacklistMerchantStatus `db:"status"`
 	StartTime    sql.NullTime            `db:"start_time"`
 	EndTime      sql.NullTime            `db:"end_time"`
 

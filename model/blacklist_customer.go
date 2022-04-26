@@ -9,8 +9,9 @@ type BlacklistCustomer struct {
 	Status    BlacklistCustomerStatus `db:"status"`
 	StartTime time.Time               `db:"start_time"`
 	EndTime   time.Time               `db:"end_time"`
-	CreatedAt time.Time               `db:"created_at"`
-	UpdatedAt time.Time               `db:"updated_at"`
+
+	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
 }
 
 // BlacklistCustomerStatus ...

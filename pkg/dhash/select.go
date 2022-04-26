@@ -1,0 +1,120 @@
+package dhash
+
+import (
+	"fmt"
+	"strconv"
+)
+
+type hashSelectAction struct {
+	root *hashImpl
+	hash uint32
+
+	sizeLogFn func() (LeaseGetOutput, error)
+	bucketFn1 func() (GetOutput, error)
+	bucketFn2 func() (GetOutput, error)
+
+	sizeLog int
+
+	results []Entry
+	err     error
+}
+
+func (h *hashSelectAction) getSizeLogFromClient() {
+	sizeLogFn := h.root.pipeline.LeaseGet(h.root.sizeLogKey)
+	h.sizeLogFn = sizeLogFn
+}
+
+func (h *hashSelectAction) getBuckets() {
+	key1 := fmt.Sprintf("%s:%d:%x", h.root.namespace, h.sizeLog-1, startOfSlot(h.hash, h.sizeLog-1))
+	key2 := fmt.Sprintf("%s:%d:%x", h.root.namespace, h.sizeLog, startOfSlot(h.hash, h.sizeLog))
+
+	h.bucketFn1 = h.root.pipeline.Get(key1)
+	h.bucketFn2 = h.root.pipeline.Get(key2)
+}
+
+func (h *hashSelectAction) handleMemSizeLogNotExisted() {
+	h.err = h.handleMemSizeLogNotExistedWithError()
+}
+
+func (h *hashSelectAction) handleSizeLogFromClient(callback func()) {
+	h.err = h.handleSizeLogFromClientWithError(callback)
+}
+
+func (h *hashSelectAction) handleSizeLogFromClientWithError(callback func()) error {
+	newSizeLogOutput, err := h.sizeLogFn()
+	if err != nil {
+		return err
+	}
+	// TODO Handle Size Log Different
+	if newSizeLogOutput.Type == LeaseGetTypeOK {
+	}
+
+	sizeLog, err := strconv.ParseInt(string(newSizeLogOutput.Data), 10, 64)
+	if err != nil {
+		return err
+	}
+	// TODO compare with previous
+	h.sizeLog = int(sizeLog)
+
+	callback()
+
+	return nil
+}
+
+func (h *hashSelectAction) handleMemSizeLogNotExistedWithError() error {
+	h.handleSizeLogFromClient(func() {
+		h.getBuckets()
+		h.root.sess.addNextCall(func() {
+			h.handleBuckets()
+		})
+	})
+	return nil
+}
+
+func (h *hashSelectAction) handleMemSizeLogExisted() {
+	h.handleSizeLogFromClient(func() {
+		h.handleBuckets()
+	})
+}
+
+func (h *hashSelectAction) handleBuckets() {
+	h.results, h.err = h.handleBucketsWithOutput()
+}
+
+func (h *hashSelectAction) handleBucketsWithOutput() ([]Entry, error) {
+	bucket1Output, err := h.bucketFn1()
+	if err != nil {
+		return nil, err
+	}
+
+	var data []byte
+	if bucket1Output.Found {
+		data = bucket1Output.Data
+	}
+
+	bucket2Output, err := h.bucketFn2()
+	if err != nil {
+		return nil, err
+	}
+	if bucket2Output.Found {
+		data = bucket2Output.Data
+	}
+
+	if len(data) == 0 {
+		// TODD
+	}
+
+	entries, err := unmarshalEntries(data)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []Entry
+	for _, entry := range entries {
+		if entry.Hash != h.hash {
+			continue
+		}
+		result = append(result, entry)
+	}
+	return result, nil
+}

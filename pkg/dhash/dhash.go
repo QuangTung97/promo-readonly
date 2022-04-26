@@ -2,7 +2,6 @@ package dhash
 
 import (
 	"context"
-	"fmt"
 )
 
 //go:generate moq -out dash_mocks_test.go . MemTable CacheClient CachePipeline Database
@@ -101,6 +100,23 @@ type providerImpl struct {
 type sessionImpl struct {
 	mem      MemTable
 	pipeline CachePipeline
+
+	nextCalls []func()
+}
+
+func (s *sessionImpl) addNextCall(fn func()) {
+	s.nextCalls = append(s.nextCalls, fn)
+}
+
+func (s *sessionImpl) callNextCalls() {
+	for len(s.nextCalls) > 0 {
+		nextCalls := s.nextCalls
+		s.nextCalls = nil
+
+		for _, call := range nextCalls {
+			call()
+		}
+	}
 }
 
 type hashImpl struct {
@@ -124,6 +140,8 @@ func (p *providerImpl) NewSession() Session {
 // New ...
 func (s *sessionImpl) New(namespace string, db Database) Hash {
 	return &hashImpl{
+		sess: s,
+
 		mem:        s.mem,
 		pipeline:   s.pipeline,
 		db:         db,
@@ -134,46 +152,32 @@ func (s *sessionImpl) New(namespace string, db Database) Hash {
 
 // SelectEntries ...
 func (h *hashImpl) SelectEntries(ctx context.Context, hash uint32) func() ([]Entry, error) {
+	action := &hashSelectAction{
+		root: h,
+		hash: hash,
+	}
+
 	sizeLogNum, ok := h.mem.GetNum(h.namespace)
 	if !ok {
+		action.getSizeLogFromClient()
 
+		h.sess.addNextCall(func() {
+			action.handleMemSizeLogNotExisted()
+		})
+	} else {
+		sizeLog := int(sizeLogNum)
+		action.sizeLog = sizeLog
+
+		action.getSizeLogFromClient()
+		action.getBuckets()
+		h.sess.addNextCall(func() {
+			action.handleMemSizeLogExisted()
+		})
 	}
-	sizeLog := int(sizeLogNum)
-
-	sizeLogFn := h.pipeline.LeaseGet(h.sizeLogKey)
-
-	key1 := fmt.Sprintf("%s:%d:%x", h.namespace, sizeLog-1, startOfSlot(hash, sizeLog-1))
-	key2 := fmt.Sprintf("%s:%d:%x", h.namespace, sizeLog, startOfSlot(hash, sizeLog))
-
-	bucketFn1 := h.pipeline.Get(key1)
-	bucketFn2 := h.pipeline.Get(key2)
 
 	return func() ([]Entry, error) {
-		newSizeLogOutput, err := sizeLogFn()
-		if err != nil {
-			return nil, err
-		}
-		// TODO Handle Size Log Different
-		if newSizeLogOutput.Type == LeaseGetTypeOK {
-		}
-
-		bucket1Output, err := bucketFn1()
-		if err != nil {
-			return nil, err
-		}
-		// TODO
-		if !bucket1Output.Found {
-		}
-
-		bucket2Output, err := bucketFn2()
-		if err != nil {
-			return nil, err
-		}
-
-		if !bucket1Output.Found && !bucket2Output.Found {
-		}
-
-		return unmarshalEntries(bucket2Output.Data)
+		h.sess.callNextCalls()
+		return action.results, action.err
 	}
 }
 

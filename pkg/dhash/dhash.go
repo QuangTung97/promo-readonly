@@ -154,6 +154,7 @@ func (s *sessionImpl) New(namespace string, db Database) Hash {
 func (h *hashImpl) SelectEntries(ctx context.Context, hash uint32) func() ([]Entry, error) {
 	action := &hashSelectAction{
 		root: h,
+		ctx:  ctx,
 		hash: hash,
 	}
 

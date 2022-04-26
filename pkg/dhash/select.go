@@ -1,19 +1,23 @@
 package dhash
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 )
 
 type hashSelectAction struct {
 	root *hashImpl
+	ctx  context.Context
 	hash uint32
 
-	sizeLogFn func() (LeaseGetOutput, error)
-	bucketFn1 func() (GetOutput, error)
-	bucketFn2 func() (GetOutput, error)
+	sizeLogFn   func() (LeaseGetOutput, error)
+	bucketFn1   func() (GetOutput, error)
+	bucketFn2   func() (GetOutput, error)
+	sizeLogDBFn func() (uint64, error)
 
-	sizeLog int
+	sizeLog        int
+	sizeLogLeaseID uint64
 
 	results []Entry
 	err     error
@@ -36,6 +40,21 @@ func (h *hashSelectAction) handleMemSizeLogNotExisted() {
 	h.err = h.handleMemSizeLogNotExistedWithError()
 }
 
+func (h *hashSelectAction) handleSizeLogFromDB() {
+	dbSizeLog, err := h.sizeLogDBFn()
+	if err != nil {
+		h.err = err
+		return
+	}
+	h.root.mem.SetNum(h.root.namespace, dbSizeLog)
+	h.sizeLog = int(dbSizeLog)
+	h.root.pipeline.LeaseSet(
+		h.root.sizeLogKey,
+		[]byte(strconv.FormatUint(dbSizeLog, 10)),
+		h.sizeLogLeaseID, 0,
+	)
+}
+
 func (h *hashSelectAction) handleSizeLogFromClient(callback func()) {
 	h.err = h.handleSizeLogFromClientWithError(callback)
 }
@@ -45,15 +64,21 @@ func (h *hashSelectAction) handleSizeLogFromClientWithError(callback func()) err
 	if err != nil {
 		return err
 	}
-	// TODO Handle Size Log Different
-	if newSizeLogOutput.Type == LeaseGetTypeOK {
+
+	if newSizeLogOutput.Type == LeaseGetTypeGranted {
+		h.sizeLogDBFn = h.root.db.GetSizeLog(h.ctx)
+		h.sizeLogLeaseID = newSizeLogOutput.LeaseID
+		h.root.sess.addNextCall(func() {
+			h.handleSizeLogFromDB()
+		})
+		callback()
 	}
 
 	sizeLog, err := strconv.ParseInt(string(newSizeLogOutput.Data), 10, 64)
 	if err != nil {
 		return err
 	}
-	// TODO compare with previous
+	// TODO compare with previous, handle difference
 	h.sizeLog = int(sizeLog)
 
 	callback()

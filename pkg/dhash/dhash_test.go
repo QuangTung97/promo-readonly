@@ -35,6 +35,7 @@ func newHashTest(ns string) *hashTest {
 
 	h.stubMemTable()
 	h.stubPipeline()
+	h.stubDB()
 	return h
 }
 
@@ -42,6 +43,7 @@ func (h *hashTest) stubMemTable() {
 	h.mem.GetNumFunc = func(key string) (uint64, bool) {
 		return 0, false
 	}
+	h.mem.SetNumFunc = func(key string, num uint64) {}
 }
 
 func (h *hashTest) stubPipeline() {
@@ -57,6 +59,19 @@ func (h *hashTest) stubPipeline() {
 			return LeaseGetOutput{
 				Type: LeaseGetTypeRejected,
 			}, nil
+		}
+	}
+	h.pipe.LeaseSetFunc = func(key string, value []byte, leaseID uint64, ttl uint32) func() error {
+		return func() error {
+			return nil
+		}
+	}
+}
+
+func (h *hashTest) stubDB() {
+	h.db.GetSizeLogFunc = func(ctx context.Context) func() (uint64, error) {
+		return func() (uint64, error) {
+			return 0, nil
 		}
 	}
 }
@@ -85,6 +100,14 @@ func (h *hashTest) stubLeaseGetOK(data string) {
 func (h *hashTest) stubGetNumNotFound() {
 	h.mem.GetNumFunc = func(key string) (uint64, bool) {
 		return 0, false
+	}
+}
+
+func (h *hashTest) stubDBGetSizeLog(n uint64) {
+	h.db.GetSizeLogFunc = func(ctx context.Context) func() (uint64, error) {
+		return func() (uint64, error) {
+			return n, nil
+		}
 	}
 }
 
@@ -200,4 +223,74 @@ func TestSelectEntries__When_GetNum_Not_Found__Call_Client_Get(t *testing.T) {
 
 	assert.Equal(t, "sample:4:f0000000", h.pipe.GetCalls()[0].Key)
 	assert.Equal(t, "sample:5:f8000000", h.pipe.GetCalls()[1].Key)
+}
+
+func TestSelectEntries__When_GetNum_Not_Found__Second_Slot_Found(t *testing.T) {
+	h := newHashTest("sample")
+
+	h.stubGetNumNotFound()
+	h.stubLeaseGetOK("5")
+	h.stubClientGet([][]Entry{
+		{},
+		{
+			newEntry(0xfc345678, 1, 2, 3),
+			newEntry(0xfc345000, 5, 6, 7),
+		},
+	})
+
+	entries, err := h.hash.SelectEntries(newContext(), 0xfc345678)()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, []Entry{newEntry(0xfc345678, 1, 2, 3)}, entries)
+}
+
+func TestSelectEntries__When_Client_Get_Size_Log_Granted__Call_Get_Size_Log_From_DB(t *testing.T) {
+	h := newHashTest("sample")
+
+	h.stubGetNum(5)
+	h.stubLeaseGet(LeaseGetOutput{
+		Type:    LeaseGetTypeGranted,
+		LeaseID: 0x3344,
+	})
+
+	_, _ = h.hash.SelectEntries(newContext(), 0xfc345678)()
+	assert.Equal(t, 1, len(h.db.GetSizeLogCalls()))
+	assert.Equal(t, newContext(), h.db.GetSizeLogCalls()[0].Ctx)
+}
+
+func TestSelectEntries__When_Client_Get_Size_Log_Granted__Do_MemTable_SetNum(t *testing.T) {
+	h := newHashTest("sample")
+
+	h.stubGetNum(5)
+	h.stubLeaseGet(LeaseGetOutput{
+		Type:    LeaseGetTypeGranted,
+		LeaseID: 0x3344,
+	})
+
+	h.stubDBGetSizeLog(7)
+
+	_, _ = h.hash.SelectEntries(newContext(), 0xfc345678)()
+
+	assert.Equal(t, 1, len(h.mem.SetNumCalls()))
+	assert.Equal(t, "sample", h.mem.SetNumCalls()[0].Key)
+	assert.Equal(t, uint64(7), h.mem.SetNumCalls()[0].Num)
+}
+
+func TestSelectEntries__When_Client_Get_Size_Log_Granted__Do_Cache_Client_Lease_Set(t *testing.T) {
+	h := newHashTest("sample")
+
+	h.stubGetNum(5)
+	h.stubLeaseGet(LeaseGetOutput{
+		Type:    LeaseGetTypeGranted,
+		LeaseID: 0x3344,
+	})
+
+	h.stubDBGetSizeLog(7)
+
+	_, _ = h.hash.SelectEntries(newContext(), 0xfc345678)()
+
+	assert.Equal(t, 1, len(h.pipe.LeaseSetCalls()))
+	assert.Equal(t, "sample:size-log", h.pipe.LeaseSetCalls()[0].Key)
+	assert.Equal(t, []byte("7"), h.pipe.LeaseSetCalls()[0].Value)
+	assert.Equal(t, uint64(0x3344), h.pipe.LeaseSetCalls()[0].LeaseID)
+	assert.Equal(t, uint32(0), h.pipe.LeaseSetCalls()[0].TTL)
 }

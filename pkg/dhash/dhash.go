@@ -61,10 +61,16 @@ type Entry struct {
 	Data []byte // marshalled record
 }
 
+// NullUint32 ...
+type NullUint32 struct {
+	Valid bool
+	Num   uint32
+}
+
 // Database for the backing store
 type Database interface {
 	GetSizeLog(ctx context.Context) func() (uint64, error)
-	SelectEntries(ctx context.Context, hashBegin uint32, hashEnd uint32) func() ([]Entry, error)
+	SelectEntries(ctx context.Context, hashBegin uint32, hashEnd NullUint32) func() ([]Entry, error)
 }
 
 // Provider can be shared between goroutines

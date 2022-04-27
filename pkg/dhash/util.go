@@ -74,7 +74,23 @@ func marshalEntries(entries []Entry) []byte {
 	return buf.Bytes()
 }
 
+const maxUint32 = 0xffffffff
+
 func startOfSlot(hash uint32, sizeLog int) uint32 {
-	mask := uint32(0xffffffff << (32 - sizeLog))
+	mask := uint32(maxUint32 << (32 - sizeLog))
 	return hash & mask
+}
+
+// TODO Unit Test
+func nextSlot(hash uint32, sizeLog int) NullUint32 {
+	bitOffset := 32 - sizeLog
+	index := hash >> bitOffset
+	max := uint32(maxUint32) >> bitOffset
+	if index == max {
+		return NullUint32{}
+	}
+	return NullUint32{
+		Valid: true,
+		Num:   (index + 1) << bitOffset,
+	}
 }

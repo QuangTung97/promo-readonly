@@ -2,6 +2,7 @@ package dhash
 
 import (
 	"context"
+	"time"
 )
 
 //go:generate moq -out dash_mocks_test.go . MemTable CacheClient CachePipeline Database
@@ -103,18 +104,25 @@ type providerImpl struct {
 	client CacheClient
 }
 
+// heap??
+type delayedCall struct {
+	startedAt time.Time
+	call      func()
+}
+
 type sessionImpl struct {
 	mem      MemTable
 	pipeline CachePipeline
 
-	nextCalls []func()
+	nextCalls    []func()
+	delayedCalls []delayedCall
 }
 
 func (s *sessionImpl) addNextCall(fn func()) {
 	s.nextCalls = append(s.nextCalls, fn)
 }
 
-func (s *sessionImpl) callNextCalls() {
+func (s *sessionImpl) processAllCalls() {
 	for len(s.nextCalls) > 0 {
 		nextCalls := s.nextCalls
 		s.nextCalls = nil
@@ -183,7 +191,7 @@ func (h *hashImpl) SelectEntries(ctx context.Context, hash uint32) func() ([]Ent
 	}
 
 	return func() ([]Entry, error) {
-		h.sess.callNextCalls()
+		h.sess.processAllCalls()
 		return action.results, action.err
 	}
 }

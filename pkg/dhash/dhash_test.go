@@ -2,6 +2,7 @@ package dhash
 
 import (
 	"context"
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -107,6 +108,7 @@ func (h *hashTest) stubLeaseGetOK(data string) {
 func (h *hashTest) stubLeaseGetOutputs(outputs []LeaseGetOutput) {
 	h.pipe.LeaseGetFunc = func(key string) func() (LeaseGetOutput, error) {
 		index := len(h.pipe.LeaseGetCalls()) - 1
+		fmt.Println(index)
 		return func() (LeaseGetOutput, error) {
 			return outputs[index], nil
 		}
@@ -340,6 +342,12 @@ func newLeaseGetGranted(leaseID uint64) LeaseGetOutput {
 	}
 }
 
+func newLeaseGetRejected() LeaseGetOutput {
+	return LeaseGetOutput{
+		Type: LeaseGetTypeRejected,
+	}
+}
+
 func newNullUint32(v uint32) NullUint32 {
 	return NullUint32{
 		Valid: true,
@@ -416,4 +424,27 @@ func TestSelectEntries__When_Both_Bucket_Not_Found__Returns_Entry_From_DB__And_S
 	assert.Equal(t, marshalEntries(dbEntries), h.pipe.LeaseSetCalls()[0].Value)
 	assert.Equal(t, uint64(7788), h.pipe.LeaseSetCalls()[0].LeaseID)
 	assert.Equal(t, uint32(0), h.pipe.LeaseSetCalls()[0].TTL)
+}
+
+func TestSelectEntries__When_Both_Bucket_Not_Found__Client_Lease_Get_Rejected__Call_Second_Times(t *testing.T) {
+	h := newHashTest("sample")
+
+	h.stubGetNum(5)
+	h.stubLeaseGetOutputs([]LeaseGetOutput{
+		{
+			Type: LeaseGetTypeOK,
+			Data: []byte("5"),
+		},
+		newLeaseGetRejected(),
+		newLeaseGetGranted(5544),
+	})
+	h.stubClientGet([][]Entry{
+		{}, {}, // both not found
+	})
+
+	_, _ = h.hash.SelectEntries(newContext(), 0xfc345678)()
+
+	assert.Equal(t, 3, len(h.pipe.LeaseGetCalls()))
+	assert.Equal(t, "sample:5:f8000000", h.pipe.LeaseGetCalls()[1].Key)
+	assert.Equal(t, "sample:5:f8000000", h.pipe.LeaseGetCalls()[2].Key)
 }

@@ -22,6 +22,8 @@ type hashSelectAction struct {
 	sizeLogLeaseID uint64
 	bucketLeaseID  uint64
 
+	clientGetBucketTimes int
+
 	results []Entry
 	err     error
 }
@@ -72,6 +74,7 @@ func (h *hashSelectAction) handleSizeLogFromClientWithError(callback func()) err
 		return err
 	}
 
+	// TODO Type Rejected
 	if newSizeLogOutput.Type == LeaseGetTypeGranted {
 		h.sizeLogDBFn = h.root.db.GetSizeLog(h.ctx)
 		h.sizeLogLeaseID = newSizeLogOutput.LeaseID
@@ -133,11 +136,7 @@ func (h *hashSelectAction) handleBucketsWithOutput() ([]Entry, error) {
 	}
 
 	if len(data) == 0 {
-		key := computeBucketKey(h.root.namespace, h.sizeLog, h.hash)
-		h.bucketLeaseGet = h.root.pipeline.LeaseGet(key)
-		h.root.sess.addNextCall(func() {
-			h.handleGetBucketFromDB()
-		})
+		h.getBucketFromCacheClient()
 		return nil, nil
 	}
 
@@ -156,6 +155,14 @@ func (h *hashSelectAction) handleBucketsWithOutput() ([]Entry, error) {
 	return result, nil
 }
 
+func (h *hashSelectAction) getBucketFromCacheClient() {
+	key := computeBucketKey(h.root.namespace, h.sizeLog, h.hash)
+	h.bucketLeaseGet = h.root.pipeline.LeaseGet(key)
+	h.root.sess.addNextCall(func() {
+		h.handleGetBucketFromDB()
+	})
+}
+
 func (h *hashSelectAction) handleGetBucketFromDB() {
 	h.err = h.handleGetBucketFromDBWithError()
 }
@@ -165,9 +172,17 @@ func (h *hashSelectAction) handleGetBucketFromDBWithError() error {
 	if err != nil {
 		return err
 	}
+	fmt.Println(bucketGetOutput)
 
-	// TODO Handle OK / Rejected
-	if bucketGetOutput.Type == LeaseGetTypeGranted {
+	if bucketGetOutput.Type == LeaseGetTypeOK {
+		// TODO Handle Ok
+		return nil
+	}
+	if bucketGetOutput.Type == LeaseGetTypeRejected {
+		h.root.sess.addNextCall(func() {
+			h.getBucketFromCacheClient()
+		})
+		return nil
 	}
 
 	h.bucketLeaseID = bucketGetOutput.LeaseID

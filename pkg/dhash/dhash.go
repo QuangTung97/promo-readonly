@@ -2,6 +2,7 @@ package dhash
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -47,8 +48,7 @@ type CacheClient interface {
 	Pipeline() CachePipeline
 }
 
-// Timer ...
-type Timer interface {
+type delayTimer interface {
 	Now() time.Time
 	Sleep(d time.Duration)
 }
@@ -82,13 +82,16 @@ type HashDatabase interface {
 
 // Provider can be shared between goroutines
 type Provider interface {
-	NewSession() Session
+	NewSession(options ...SessionOption) Session
 }
 
 // Session can NOT be shared between goroutines
 type Session interface {
 	NewHash(namespace string, db HashDatabase) Hash
 }
+
+// ErrLeaseNotGranted after multiple retries configured by WithWaitLeaseDurations
+var ErrLeaseNotGranted = errors.New("lease not granted after retries")
 
 // Hash ...
 type Hash interface {
@@ -97,19 +100,34 @@ type Hash interface {
 	InvalidateEntry(ctx context.Context, hash uint32) func() error
 }
 
-// NewProvider ...
-func NewProvider(mem MemTable, client CacheClient, timer Timer) Provider {
+type defaultDelayTimer struct {
+}
+
+func (t defaultDelayTimer) Now() time.Time {
+	return time.Now()
+}
+
+func (t defaultDelayTimer) Sleep(d time.Duration) {
+	time.Sleep(d)
+}
+
+func newProviderImpl(mem MemTable, client CacheClient) *providerImpl {
 	return &providerImpl{
 		mem:    mem,
 		client: client,
-		timer:  timer,
+		timer:  defaultDelayTimer{},
 	}
+}
+
+// NewProvider ...
+func NewProvider(mem MemTable, client CacheClient) Provider {
+	return newProviderImpl(mem, client)
 }
 
 type providerImpl struct {
 	mem    MemTable
 	client CacheClient
-	timer  Timer
+	timer  delayTimer
 }
 
 type delayedCall struct {
@@ -118,9 +136,11 @@ type delayedCall struct {
 }
 
 type sessionImpl struct {
+	options sessionOptions
+
 	mem      MemTable
 	pipeline CachePipeline
-	timer    Timer
+	timer    delayTimer
 
 	nextCalls []func()
 	delayed   delayedCallHeap
@@ -179,15 +199,16 @@ type hashImpl struct {
 }
 
 // NewSession ...
-func (p *providerImpl) NewSession() Session {
+func (p *providerImpl) NewSession(options ...SessionOption) Session {
 	return &sessionImpl{
+		options:  newSessionOptions(options...),
 		mem:      p.mem,
 		pipeline: p.client.Pipeline(),
 		timer:    p.timer,
 	}
 }
 
-// New ...
+// NewHash ...
 func (s *sessionImpl) NewHash(namespace string, db HashDatabase) Hash {
 	return &hashImpl{
 		sess: s,

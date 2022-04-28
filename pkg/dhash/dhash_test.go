@@ -42,7 +42,7 @@ func newTimeMock() *timerMock {
 	return m
 }
 
-func newHashTest(ns string) *hashTest {
+func newHashTest(ns string, options ...SessionOption) *hashTest {
 	mem := &MemTableMock{}
 	client := &CacheClientMock{}
 	pipeline := &CachePipelineMock{}
@@ -52,7 +52,8 @@ func newHashTest(ns string) *hashTest {
 	}
 
 	timer := newTimeMock()
-	p := NewProvider(mem, client, timer)
+	p := newProviderImpl(mem, client)
+	p.timer = timer
 
 	db := &HashDatabaseMock{}
 
@@ -60,7 +61,7 @@ func newHashTest(ns string) *hashTest {
 		mem:   mem,
 		db:    db,
 		pipe:  pipeline,
-		hash:  p.NewSession().NewHash(ns, db),
+		hash:  p.NewSession(options...).NewHash(ns, db),
 		timer: timer,
 	}
 
@@ -478,6 +479,41 @@ func TestSelectEntries__When_Both_Bucket_Not_Found__Client_Lease_Get_Rejected__C
 	assert.Equal(t, "sample:5:f8000000", h.pipe.LeaseGetCalls()[2].Key)
 
 	assert.Equal(t, []time.Duration{
-		100 * time.Millisecond,
+		10 * time.Millisecond,
+	}, h.timer.sleepCalls)
+}
+
+func TestSelectEntries__When_Both_Bucket_Not_Found__Client_Lease_Get_Rejected_All_Times__Returns_Err(t *testing.T) {
+	h := newHashTest("sample")
+
+	h.stubGetNum(5)
+	h.stubLeaseGetOutputs([]LeaseGetOutput{
+		{
+			Type: LeaseGetTypeOK,
+			Data: []byte("5"),
+		},
+		newLeaseGetRejected(),
+		newLeaseGetRejected(),
+		newLeaseGetRejected(),
+		newLeaseGetRejected(),
+	})
+	h.stubClientGet([][]Entry{
+		{}, {}, // both not found
+	})
+
+	_, err := h.hash.SelectEntries(newContext(), 0xfc345678)()
+	assert.Equal(t, ErrLeaseNotGranted, err)
+
+	assert.Equal(t, 5, len(h.pipe.LeaseGetCalls()))
+	assert.Equal(t, "sample:5:f8000000", h.pipe.LeaseGetCalls()[1].Key)
+	assert.Equal(t, "sample:5:f8000000", h.pipe.LeaseGetCalls()[2].Key)
+	assert.Equal(t, "sample:5:f8000000", h.pipe.LeaseGetCalls()[3].Key)
+	assert.Equal(t, "sample:5:f8000000", h.pipe.LeaseGetCalls()[4].Key)
+
+	// default durations
+	assert.Equal(t, []time.Duration{
+		10 * time.Millisecond,
+		20 * time.Millisecond,
+		50 * time.Millisecond,
 	}, h.timer.sleepCalls)
 }

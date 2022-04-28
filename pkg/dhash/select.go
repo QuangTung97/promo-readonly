@@ -23,7 +23,8 @@ type hashSelectAction struct {
 	sizeLogLeaseID uint64
 	bucketLeaseID  uint64
 
-	clientGetBucketTimes int
+	clientWaitLeaseStarted   bool
+	clientWaitLeaseDurations []time.Duration
 
 	results []Entry
 	err     error
@@ -181,7 +182,20 @@ func (h *hashSelectAction) handleGetBucketFromDBWithError() error {
 		return nil
 	}
 	if bucketGetOutput.Type == LeaseGetTypeRejected {
-		h.root.sess.addDelayedCall(h.root.sess.timer.Now().Add(100*time.Millisecond), func() {
+		sess := h.root.sess
+
+		if !h.clientWaitLeaseStarted {
+			h.clientWaitLeaseStarted = true
+			h.clientWaitLeaseDurations = sess.options.waitLeaseDurations
+		}
+
+		if len(h.clientWaitLeaseDurations) == 0 {
+			return ErrLeaseNotGranted
+		}
+		duration := h.clientWaitLeaseDurations[0]
+		h.clientWaitLeaseDurations = h.clientWaitLeaseDurations[1:]
+
+		sess.addDelayedCall(sess.timer.Now().Add(duration), func() {
 			h.getBucketFromCacheClient()
 		})
 		return nil

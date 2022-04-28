@@ -373,6 +373,58 @@ func TestSelectEntries__When_Client_Get_Size_Log_Granted__Returns_Entry_From_Cli
 	}, entries)
 }
 
+func TestSelectEntries__When_Client_Get_Size_Log_Reject__Do_Retries(t *testing.T) {
+	h := newHashTest("sample")
+
+	h.stubGetNum(5)
+	h.stubLeaseGetOutputs([]LeaseGetOutput{
+		newLeaseGetRejected(),
+		newLeaseGetRejected(),
+		newLeaseGetGranted(8899),
+	})
+	h.stubClientGet([][]Entry{
+		{},
+		{
+			newEntry(0xfc345678, 1, 2, 3),
+		},
+	})
+
+	h.stubDBGetSizeLog(6)
+
+	_, _ = h.hash.SelectEntries(newContext(), 0xfc345678)()
+	assert.Equal(t, 3, len(h.pipe.LeaseGetCalls()))
+	assert.Equal(t, []time.Duration{
+		10 * time.Millisecond,
+		20 * time.Millisecond,
+	}, h.timer.sleepCalls)
+}
+
+func TestSelectEntries__When_Client_Get_Size_Log_Reject__Retries_All_Times(t *testing.T) {
+	h := newHashTest("sample", WithFailedOnWaitFinished(false))
+
+	h.stubGetNum(5)
+	h.stubLeaseGetOutputs([]LeaseGetOutput{
+		newLeaseGetRejected(),
+		newLeaseGetRejected(),
+		newLeaseGetRejected(),
+		newLeaseGetRejected(),
+	})
+	h.stubClientGet([][]Entry{
+		{},
+		{
+			newEntry(0xfc345678, 1, 2, 3),
+		},
+	})
+
+	h.stubDBGetSizeLog(6)
+
+	entries, err := h.hash.SelectEntries(newContext(), 0xfc345678)()
+	assert.Equal(t, ErrLeaseNotGranted, err)
+	assert.Nil(t, entries)
+
+	assert.Equal(t, 4, len(h.pipe.LeaseGetCalls()))
+}
+
 func TestSelectEntries__When_Both_Bucket_Not_Found__Client_Lease_Get(t *testing.T) {
 	h := newHashTest("sample")
 

@@ -161,9 +161,9 @@ func (s *sessionImpl) addNextCall(fn func()) {
 	s.nextCalls = append(s.nextCalls, fn)
 }
 
-func (s *sessionImpl) addDelayedCall(startedAt time.Time, call func()) {
+func (s *sessionImpl) addDelayedCall(d time.Duration, call func()) {
 	s.delayed.push(delayedCall{
-		startedAt: startedAt,
+		startedAt: s.timer.Now().Add(d),
 		call:      call,
 	})
 }

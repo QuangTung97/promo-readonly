@@ -23,8 +23,11 @@ type hashSelectAction struct {
 	sizeLogLeaseID uint64
 	bucketLeaseID  uint64
 
-	clientWaitLeaseStarted   bool
-	clientWaitLeaseDurations []time.Duration
+	sizeLogWaitLeaseStarted   bool
+	sizeLogWaitLeaseDurations []time.Duration
+
+	bucketWaitLeaseStarted   bool
+	bucketWaitLeaseDurations []time.Duration
 
 	results []Entry
 	err     error
@@ -91,7 +94,23 @@ func (h *hashSelectAction) handleSizeLogFromClientWithError(callback func()) err
 	}
 
 	if newSizeLogOutput.Type == LeaseGetTypeRejected {
-		// TODO Type Rejected
+		sess := h.root.sess
+
+		if !h.sizeLogWaitLeaseStarted {
+			h.sizeLogWaitLeaseStarted = true
+			h.sizeLogWaitLeaseDurations = sess.options.waitLeaseDurations
+		}
+
+		if len(h.sizeLogWaitLeaseDurations) == 0 {
+			return ErrLeaseNotGranted // TODO
+		}
+		duration := h.sizeLogWaitLeaseDurations[0]
+		h.sizeLogWaitLeaseDurations = h.sizeLogWaitLeaseDurations[1:]
+
+		h.sizeLogFn = h.root.pipeline.LeaseGet(h.root.sizeLogKey)
+		h.root.sess.addDelayedCall(duration, func() {
+			h.handleSizeLogFromClient(callback)
+		})
 		return nil
 	}
 
@@ -105,6 +124,10 @@ func (h *hashSelectAction) handleSizeLogFromClientWithError(callback func()) err
 	callback()
 
 	return nil
+}
+
+func (h *hashSelectAction) handleRetryGetSizeLogFromCache() {
+
 }
 
 func (h *hashSelectAction) handleMemSizeLogNotExistedWithError() error {
@@ -195,19 +218,19 @@ func (h *hashSelectAction) handleGetBucketFromDBWithError() error {
 	if bucketGetOutput.Type == LeaseGetTypeRejected {
 		sess := h.root.sess
 
-		if !h.clientWaitLeaseStarted {
-			h.clientWaitLeaseStarted = true
-			h.clientWaitLeaseDurations = sess.options.waitLeaseDurations
+		if !h.bucketWaitLeaseStarted {
+			h.bucketWaitLeaseStarted = true
+			h.bucketWaitLeaseDurations = sess.options.waitLeaseDurations
 		}
 
 		// TODO Get Bucket From DB
-		if len(h.clientWaitLeaseDurations) == 0 {
+		if len(h.bucketWaitLeaseDurations) == 0 {
 			return ErrLeaseNotGranted
 		}
-		duration := h.clientWaitLeaseDurations[0]
-		h.clientWaitLeaseDurations = h.clientWaitLeaseDurations[1:]
+		duration := h.bucketWaitLeaseDurations[0]
+		h.bucketWaitLeaseDurations = h.bucketWaitLeaseDurations[1:]
 
-		sess.addDelayedCall(sess.timer.Now().Add(duration), func() {
+		sess.addDelayedCall(duration, func() {
 			h.getBucketFromCacheClientForLeasing()
 		})
 		return nil

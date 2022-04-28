@@ -349,6 +349,30 @@ func TestSelectEntries__When_Client_Get_Size_Log_Granted__Do_Cache_Client_Lease_
 	assert.Equal(t, uint32(0), h.pipe.LeaseSetCalls()[0].TTL)
 }
 
+func TestSelectEntries__When_Client_Get_Size_Log_Granted__Returns_Entry_From_Client_Get(t *testing.T) {
+	h := newHashTest("sample")
+
+	h.stubGetNum(5)
+	h.stubLeaseGet(LeaseGetOutput{
+		Type:    LeaseGetTypeGranted,
+		LeaseID: 0x3344,
+	})
+	h.stubClientGet([][]Entry{
+		{},
+		{
+			newEntry(0xfc345678, 1, 2, 3),
+		},
+	})
+
+	h.stubDBGetSizeLog(7)
+
+	entries, err := h.hash.SelectEntries(newContext(), 0xfc345678)()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, []Entry{
+		newEntry(0xfc345678, 1, 2, 3),
+	}, entries)
+}
+
 func TestSelectEntries__When_Both_Bucket_Not_Found__Client_Lease_Get(t *testing.T) {
 	h := newHashTest("sample")
 
@@ -516,4 +540,48 @@ func TestSelectEntries__When_Both_Bucket_Not_Found__Client_Lease_Get_Rejected_Al
 		20 * time.Millisecond,
 		50 * time.Millisecond,
 	}, h.timer.sleepCalls)
+}
+
+func TestSelectEntries__When_Both_Bucket_Not_Found__Client_Lease_Get_OK__Returns_Client_Entries(t *testing.T) {
+	h := newHashTest("sample")
+
+	h.stubGetNum(5)
+	h.stubLeaseGetOutputs([]LeaseGetOutput{
+		{
+			Type: LeaseGetTypeOK,
+			Data: []byte("5"),
+		},
+		newLeaseGetRejected(),
+		{
+			Type: LeaseGetTypeOK,
+			Data: marshalEntries([]Entry{
+				{
+					Hash: 0xfc345678,
+					Data: []byte("sample data"),
+				},
+			}),
+		},
+	})
+	h.stubClientGet([][]Entry{
+		{}, {}, // both not found
+	})
+
+	entries, err := h.hash.SelectEntries(newContext(), 0xfc345678)()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, []Entry{
+		{
+			Hash: 0xfc345678,
+			Data: []byte("sample data"),
+		},
+	}, entries)
+
+	assert.Equal(t, 3, len(h.pipe.LeaseGetCalls()))
+	assert.Equal(t, "sample:5:f8000000", h.pipe.LeaseGetCalls()[1].Key)
+	assert.Equal(t, "sample:5:f8000000", h.pipe.LeaseGetCalls()[2].Key)
+
+	assert.Equal(t, []time.Duration{
+		10 * time.Millisecond,
+	}, h.timer.sleepCalls)
+
+	assert.Equal(t, 0, len(h.db.SelectEntriesCalls()))
 }

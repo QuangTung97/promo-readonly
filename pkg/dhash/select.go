@@ -53,7 +53,7 @@ func (h *hashSelectAction) handleMemSizeLogNotExisted() {
 	h.err = h.handleMemSizeLogNotExistedWithError()
 }
 
-func (h *hashSelectAction) handleSizeLogFromDB() {
+func (h *hashSelectAction) handleSizeLogFromDB(callback func()) {
 	dbSizeLog, err := h.sizeLogDBFn()
 	if err != nil {
 		h.err = err
@@ -61,6 +61,9 @@ func (h *hashSelectAction) handleSizeLogFromDB() {
 	}
 	h.root.mem.SetNum(h.root.namespace, dbSizeLog)
 	h.sizeLog = int(dbSizeLog)
+
+	callback()
+
 	h.root.pipeline.LeaseSet(
 		h.root.sizeLogKey,
 		[]byte(strconv.FormatUint(dbSizeLog, 10)),
@@ -78,14 +81,18 @@ func (h *hashSelectAction) handleSizeLogFromClientWithError(callback func()) err
 		return err
 	}
 
-	// TODO Type Rejected
 	if newSizeLogOutput.Type == LeaseGetTypeGranted {
 		h.sizeLogDBFn = h.root.db.GetSizeLog(h.ctx)
 		h.sizeLogLeaseID = newSizeLogOutput.LeaseID
 		h.root.sess.addNextCall(func() {
-			h.handleSizeLogFromDB()
+			h.handleSizeLogFromDB(callback)
 		})
-		callback()
+		return nil
+	}
+
+	if newSizeLogOutput.Type == LeaseGetTypeRejected {
+		// TODO Type Rejected
+		return nil
 	}
 
 	sizeLog, err := strconv.ParseInt(string(newSizeLogOutput.Data), 10, 64)
@@ -140,7 +147,7 @@ func (h *hashSelectAction) handleBucketsWithOutput() ([]Entry, error) {
 	}
 
 	if len(data) == 0 {
-		h.getBucketFromCacheClient()
+		h.getBucketFromCacheClientForLeasing()
 		return nil, nil
 	}
 
@@ -159,7 +166,7 @@ func (h *hashSelectAction) handleBucketsWithOutput() ([]Entry, error) {
 	return result, nil
 }
 
-func (h *hashSelectAction) getBucketFromCacheClient() {
+func (h *hashSelectAction) getBucketFromCacheClientForLeasing() {
 	key := computeBucketKey(h.root.namespace, h.sizeLog, h.hash)
 	h.bucketLeaseGet = h.root.pipeline.LeaseGet(key)
 	h.root.sess.addNextCall(func() {
@@ -178,7 +185,11 @@ func (h *hashSelectAction) handleGetBucketFromDBWithError() error {
 	}
 
 	if bucketGetOutput.Type == LeaseGetTypeOK {
-		// TODO Handle Ok
+		entries, err := unmarshalEntries(bucketGetOutput.Data)
+		if err != nil {
+			return err
+		}
+		h.results = entries
 		return nil
 	}
 	if bucketGetOutput.Type == LeaseGetTypeRejected {
@@ -189,6 +200,7 @@ func (h *hashSelectAction) handleGetBucketFromDBWithError() error {
 			h.clientWaitLeaseDurations = sess.options.waitLeaseDurations
 		}
 
+		// TODO Get Bucket From DB
 		if len(h.clientWaitLeaseDurations) == 0 {
 			return ErrLeaseNotGranted
 		}
@@ -196,7 +208,7 @@ func (h *hashSelectAction) handleGetBucketFromDBWithError() error {
 		h.clientWaitLeaseDurations = h.clientWaitLeaseDurations[1:]
 
 		sess.addDelayedCall(sess.timer.Now().Add(duration), func() {
-			h.getBucketFromCacheClient()
+			h.getBucketFromCacheClientForLeasing()
 		})
 		return nil
 	}

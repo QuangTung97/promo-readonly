@@ -59,7 +59,6 @@ type CachePipeline interface {
 	LeaseGet(key string) func() (LeaseGetOutput, error)
 	LeaseSet(key string, value []byte, leaseID uint64, ttl uint32) func() error
 	Delete(key string) func() error
-	Finish()
 }
 
 // Entry for single hash value entry
@@ -80,6 +79,11 @@ type HashDatabase interface {
 	SelectEntries(ctx context.Context, hashBegin uint32, hashEnd NullUint32) func() ([]Entry, error)
 }
 
+// StoreDatabase backing store of simple kv cache
+type StoreDatabase interface {
+	Get(ctx context.Context, key string) func() ([]byte, error)
+}
+
 // Provider can be shared between goroutines
 type Provider interface {
 	NewSession(options ...SessionOption) Session
@@ -88,16 +92,23 @@ type Provider interface {
 // Session can NOT be shared between goroutines
 type Session interface {
 	NewHash(namespace string, db HashDatabase) Hash
+	NewStore(fn StoreDatabase) Store
 }
 
 // ErrLeaseNotGranted after multiple retries configured by WithWaitLeaseDurations
 var ErrLeaseNotGranted = errors.New("lease not granted after retries")
 
-// Hash ...
+// Hash likes Redis hash map (but consistent)
 type Hash interface {
 	SelectEntries(ctx context.Context, hash uint32) func() ([]Entry, error)
 	InvalidateSizeLog(ctx context.Context) func() error
-	InvalidateEntry(ctx context.Context, hash uint32) func() error
+	InvalidateEntry(ctx context.Context, sizeLog uint64, hash uint32) func() error
+}
+
+// Store for simple kv store (plain memcached key-value)
+type Store interface {
+	Get(ctx context.Context, key string) func() ([]byte, error)
+	Invalidate(ctx context.Context, key string) func() error
 }
 
 type defaultDelayTimer struct {
@@ -188,16 +199,6 @@ func (s *sessionImpl) processAllCalls() {
 	}
 }
 
-type hashImpl struct {
-	sess *sessionImpl
-
-	mem        MemTable
-	pipeline   CachePipeline
-	db         HashDatabase
-	namespace  string
-	sizeLogKey string
-}
-
 // NewSession ...
 func (p *providerImpl) NewSession(options ...SessionOption) Session {
 	return &sessionImpl{
@@ -221,48 +222,7 @@ func (s *sessionImpl) NewHash(namespace string, db HashDatabase) Hash {
 	}
 }
 
-// SelectEntries ...
-func (h *hashImpl) SelectEntries(ctx context.Context, hash uint32) func() ([]Entry, error) {
-	action := &hashSelectAction{
-		root: h,
-		ctx:  ctx,
-		hash: hash,
-	}
-
-	sizeLogNum, ok := h.mem.GetNum(h.namespace)
-	if !ok {
-		action.getSizeLogFromClient()
-
-		h.sess.addNextCall(func() {
-			action.handleMemSizeLogNotExisted()
-		})
-	} else {
-		sizeLog := int(sizeLogNum)
-		action.sizeLog = sizeLog
-
-		action.getSizeLogFromClient()
-		action.getBuckets()
-		h.sess.addNextCall(func() {
-			action.handleMemSizeLogExisted()
-		})
-	}
-
-	return func() ([]Entry, error) {
-		h.sess.processAllCalls()
-		return action.results, action.err
-	}
-}
-
-// InvalidateSizeLog ...
-func (h *hashImpl) InvalidateSizeLog(_ context.Context) func() error {
-	return func() error {
-		return nil
-	}
-}
-
-// InvalidateEntry ...
-func (h *hashImpl) InvalidateEntry(_ context.Context, _ uint32) func() error {
-	return func() error {
-		return nil
-	}
+// NewStore ...
+func (s *sessionImpl) NewStore(_ StoreDatabase) Store {
+	return nil
 }

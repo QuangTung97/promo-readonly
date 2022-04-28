@@ -56,7 +56,7 @@ func (h *hashSelectAction) handleMemSizeLogNotExisted() {
 	h.err = h.handleMemSizeLogNotExistedWithError()
 }
 
-func (h *hashSelectAction) handleSizeLogFromDB(callback func()) {
+func (h *hashSelectAction) updateSizeLogFromDB() {
 	dbSizeLog, err := h.sizeLogDBFn()
 	if err != nil {
 		h.err = err
@@ -64,12 +64,16 @@ func (h *hashSelectAction) handleSizeLogFromDB(callback func()) {
 	}
 	h.root.mem.SetNum(h.root.namespace, dbSizeLog)
 	h.sizeLog = int(dbSizeLog)
+}
+
+func (h *hashSelectAction) handleSizeLogFromDB(callback func()) {
+	h.updateSizeLogFromDB()
 
 	callback()
 
 	h.root.pipeline.LeaseSet(
 		h.root.sizeLogKey,
-		[]byte(strconv.FormatUint(dbSizeLog, 10)),
+		[]byte(strconv.FormatUint(uint64(h.sizeLog), 10)),
 		h.sizeLogLeaseID, 0, // TODO Customize TTL
 	)
 }
@@ -102,7 +106,16 @@ func (h *hashSelectAction) handleSizeLogFromClientWithError(callback func()) err
 		}
 
 		if len(h.sizeLogWaitLeaseDurations) == 0 {
-			return ErrLeaseNotGranted // TODO
+			if sess.options.failedOnWaitFinished {
+				return ErrLeaseNotGranted
+			} else {
+				h.sizeLogDBFn = h.root.db.GetSizeLog(h.ctx)
+				h.root.sess.addNextCall(func() {
+					h.updateSizeLogFromDB()
+					callback()
+				})
+				return nil
+			}
 		}
 		duration := h.sizeLogWaitLeaseDurations[0]
 		h.sizeLogWaitLeaseDurations = h.sizeLogWaitLeaseDurations[1:]

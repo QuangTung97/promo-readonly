@@ -400,6 +400,24 @@ func TestSelectEntries__When_Client_Get_Size_Log_Reject__Do_Retries(t *testing.T
 }
 
 func TestSelectEntries__When_Client_Get_Size_Log_Reject__Retries_All_Times(t *testing.T) {
+	h := newHashTest("sample", WithFailedOnWaitFinished(true))
+
+	h.stubGetNum(5)
+	h.stubLeaseGetOutputs([]LeaseGetOutput{
+		newLeaseGetRejected(),
+		newLeaseGetRejected(),
+		newLeaseGetRejected(),
+		newLeaseGetRejected(),
+	})
+
+	entries, err := h.hash.SelectEntries(newContext(), 0xfc345678)()
+	assert.Equal(t, ErrLeaseNotGranted, err)
+	assert.Nil(t, entries)
+
+	assert.Equal(t, 4, len(h.pipe.LeaseGetCalls()))
+}
+
+func TestSelectEntries__When_Client_Get_Size_Log_Reject__Not_Failed_On_Finished__Call_GetDB(t *testing.T) {
 	h := newHashTest("sample", WithFailedOnWaitFinished(false))
 
 	h.stubGetNum(5)
@@ -419,10 +437,12 @@ func TestSelectEntries__When_Client_Get_Size_Log_Reject__Retries_All_Times(t *te
 	h.stubDBGetSizeLog(6)
 
 	entries, err := h.hash.SelectEntries(newContext(), 0xfc345678)()
-	assert.Equal(t, ErrLeaseNotGranted, err)
-	assert.Nil(t, entries)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, []Entry{
+		newEntry(0xfc345678, 1, 2, 3),
+	}, entries)
 
-	assert.Equal(t, 4, len(h.pipe.LeaseGetCalls()))
+	assert.Equal(t, 1, len(h.db.GetSizeLogCalls()))
 }
 
 func TestSelectEntries__When_Both_Bucket_Not_Found__Client_Lease_Get(t *testing.T) {

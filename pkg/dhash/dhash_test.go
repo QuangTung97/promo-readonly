@@ -2,16 +2,44 @@ package dhash
 
 import (
 	"context"
-	"fmt"
 	"github.com/stretchr/testify/assert"
 	"testing"
+	"time"
 )
 
 type hashTest struct {
-	mem  *MemTableMock
-	db   *DatabaseMock
-	pipe *CachePipelineMock
-	hash Hash
+	mem   *MemTableMock
+	db    *HashDatabaseMock
+	pipe  *CachePipelineMock
+	hash  Hash
+	timer *timerMock
+}
+
+type timerMock struct {
+	nowCalls   int
+	current    time.Time
+	sleepCalls []time.Duration
+}
+
+func (t *timerMock) Now() time.Time {
+	return t.current
+}
+
+func (t *timerMock) Sleep(d time.Duration) {
+	t.sleepCalls = append(t.sleepCalls, d)
+	t.current = t.current.Add(d)
+}
+
+func startOfTime() time.Time {
+	return newTime("2022-05-07T10:00:00+07:00")
+}
+
+func newTimeMock() *timerMock {
+	m := &timerMock{
+		nowCalls: 0,
+		current:  startOfTime(),
+	}
+	return m
 }
 
 func newHashTest(ns string) *hashTest {
@@ -23,15 +51,17 @@ func newHashTest(ns string) *hashTest {
 		return pipeline
 	}
 
-	p := NewProvider(mem, client)
+	timer := newTimeMock()
+	p := NewProvider(mem, client, timer)
 
-	db := &DatabaseMock{}
+	db := &HashDatabaseMock{}
 
 	h := &hashTest{
-		mem:  mem,
-		db:   db,
-		pipe: pipeline,
-		hash: p.NewSession().New(ns, db),
+		mem:   mem,
+		db:    db,
+		pipe:  pipeline,
+		hash:  p.NewSession().NewHash(ns, db),
+		timer: timer,
 	}
 
 	h.stubMemTable()
@@ -108,7 +138,6 @@ func (h *hashTest) stubLeaseGetOK(data string) {
 func (h *hashTest) stubLeaseGetOutputs(outputs []LeaseGetOutput) {
 	h.pipe.LeaseGetFunc = func(key string) func() (LeaseGetOutput, error) {
 		index := len(h.pipe.LeaseGetCalls()) - 1
-		fmt.Println(index)
 		return func() (LeaseGetOutput, error) {
 			return outputs[index], nil
 		}
@@ -447,4 +476,8 @@ func TestSelectEntries__When_Both_Bucket_Not_Found__Client_Lease_Get_Rejected__C
 	assert.Equal(t, 3, len(h.pipe.LeaseGetCalls()))
 	assert.Equal(t, "sample:5:f8000000", h.pipe.LeaseGetCalls()[1].Key)
 	assert.Equal(t, "sample:5:f8000000", h.pipe.LeaseGetCalls()[2].Key)
+
+	assert.Equal(t, []time.Duration{
+		100 * time.Millisecond,
+	}, h.timer.sleepCalls)
 }

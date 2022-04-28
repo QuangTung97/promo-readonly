@@ -58,7 +58,7 @@ func TestHeap_Properties_Based(t *testing.T) {
 		})
 	}
 
-	rand.Seed(time.Now().Unix())
+	rand.Seed(1234)
 
 	rand.Shuffle(len(calls), func(i, j int) {
 		calls[i], calls[j] = calls[j], calls[i]
@@ -69,6 +69,8 @@ func TestHeap_Properties_Based(t *testing.T) {
 	for _, call := range calls {
 		h.push(call)
 	}
+
+	assert.Equal(t, delayedCall{startedAt: start}, h.top())
 
 	assert.Equal(t, num, h.size())
 

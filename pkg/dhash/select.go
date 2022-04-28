@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 )
 
 type hashSelectAction struct {
@@ -27,6 +28,8 @@ type hashSelectAction struct {
 	results []Entry
 	err     error
 }
+
+//revive:disable:get-return
 
 func (h *hashSelectAction) getSizeLogFromClient() {
 	sizeLogFn := h.root.pipeline.LeaseGet(h.root.sizeLogKey)
@@ -172,14 +175,13 @@ func (h *hashSelectAction) handleGetBucketFromDBWithError() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(bucketGetOutput)
 
 	if bucketGetOutput.Type == LeaseGetTypeOK {
 		// TODO Handle Ok
 		return nil
 	}
 	if bucketGetOutput.Type == LeaseGetTypeRejected {
-		h.root.sess.addNextCall(func() {
+		h.root.sess.addDelayedCall(h.root.sess.timer.Now().Add(100*time.Millisecond), func() {
 			h.getBucketFromCacheClient()
 		})
 		return nil

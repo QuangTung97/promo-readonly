@@ -37,6 +37,10 @@ func (h *delayedCallHeap) size() int {
 	return len(h.data)
 }
 
+func (h *delayedCallHeap) top() delayedCall {
+	return h.data[0]
+}
+
 func (h *delayedCallHeap) pop() delayedCall {
 	result := h.data[0]
 	last := len(h.data) - 1

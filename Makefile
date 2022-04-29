@@ -1,4 +1,4 @@
-.PHONY: run lint install-tools
+.PHONY: run lint install-tools test test-race benchmark
 
 run:
 	go run cmd/main.go
@@ -11,3 +11,12 @@ lint:
 install-tools:
 	go install github.com/matryer/moq
 	go install github.com/mgechev/revive
+
+test:
+	go test -v -p 1 -count=1 ./...
+
+test-race:
+	go test -v -p 1 -count=1 -race ./...
+
+benchmark:
+	echo "TODO"

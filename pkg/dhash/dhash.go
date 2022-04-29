@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-//go:generate moq -out dash_mocks_test.go . MemTable CacheClient CachePipeline HashDatabase
+//go:generate moq -out dash_mocks_test.go . MemTable CacheClient CachePipeline HashDatabase StoreDatabase
 
 // MemTable for in memory hash table storing size log (with eviction)
 type MemTable interface {
@@ -191,6 +191,8 @@ func (s *sessionImpl) processAllCalls() {
 
 		top.call()
 
+		now = s.timer.Now().Add(200 * time.Microsecond) // earlier about 200 microseconds
+
 		// now >= startedAt <=> ~(now < startedAt)
 		for s.delayed.size() > 0 && !now.Before(s.delayed.top().startedAt) {
 			top := s.delayed.pop()
@@ -223,6 +225,10 @@ func (s *sessionImpl) NewHash(namespace string, db HashDatabase) Hash {
 }
 
 // NewStore ...
-func (s *sessionImpl) NewStore(_ StoreDatabase) Store {
-	return nil
+func (s *sessionImpl) NewStore(db StoreDatabase) Store {
+	return &storeImpl{
+		sess:     s,
+		db:       db,
+		pipeline: s.pipeline,
+	}
 }

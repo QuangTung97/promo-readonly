@@ -100,6 +100,9 @@ func (h *hashTest) stubPipeline() {
 			return nil
 		}
 	}
+	h.pipe.DeleteFunc = func(key string) func() error {
+		return func() error { return nil }
+	}
 }
 
 func (h *hashTest) stubDB() {

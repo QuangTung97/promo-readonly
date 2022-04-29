@@ -38,14 +38,18 @@ func (h *hashImpl) SelectEntries(ctx context.Context, hash uint32) func() ([]Ent
 
 // InvalidateSizeLog ...
 func (h *hashImpl) InvalidateSizeLog(_ context.Context) func() error {
-	return func() error {
-		return nil
-	}
+	return h.pipeline.Delete(h.sizeLogKey)
 }
 
 // InvalidateEntry ...
-func (h *hashImpl) InvalidateEntry(_ context.Context, _ uint64, _ uint32) func() error {
+func (h *hashImpl) InvalidateEntry(_ context.Context, sizeLog uint64, hash uint32) func() error {
+	fn1 := h.pipeline.Delete(computeBucketKey(h.namespace, int(sizeLog-1), hash))
+	fn2 := h.pipeline.Delete(computeBucketKey(h.namespace, int(sizeLog), hash))
+
 	return func() error {
-		return nil
+		if err := fn1(); err != nil {
+			return err
+		}
+		return fn2()
 	}
 }

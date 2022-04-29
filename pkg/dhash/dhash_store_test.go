@@ -160,7 +160,7 @@ func TestStore_Get__Lease_Granted__Returns_Data(t *testing.T) {
 	assert.Equal(t, "db get data", string(data))
 }
 
-func TestStore_Get__Lease_Granted__Get_From_DB_Err(t *testing.T) {
+func TestStore_Get__Lease_Granted__Get_From_DB_Err__Call_Delete_Cache(t *testing.T) {
 	s := newStoreTest()
 	s.stubLeaseGet(newLeaseGetGranted(889900))
 	s.stubDBGetError(errors.New("some error"))
@@ -168,6 +168,9 @@ func TestStore_Get__Lease_Granted__Get_From_DB_Err(t *testing.T) {
 	data, err := s.store.Get(newContext(), "key01")()
 	assert.Equal(t, errors.New("some error"), err)
 	assert.Nil(t, data)
+
+	assert.Equal(t, 1, len(s.pipe.DeleteCalls()))
+	assert.Equal(t, "key01", s.pipe.DeleteCalls()[0].Key)
 }
 
 func TestStore_Get__Lease_Rejected__Call_Lease_Get_Multiple_Times__Returns_Error(t *testing.T) {

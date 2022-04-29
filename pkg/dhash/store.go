@@ -41,6 +41,7 @@ func (s *storeGetAction) handleLeaseGetWithOutput() ([]byte, error) {
 			dbData, err := dbFn()
 			if err != nil {
 				s.err = err
+				s.root.pipeline.Delete(s.key)
 				return
 			}
 			s.data = dbData

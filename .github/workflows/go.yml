@@ -1,4 +1,4 @@
-name: go-memcache
+name: promo-readonly
 on:
   push:
     branches: [ master ]

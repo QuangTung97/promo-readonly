@@ -53,7 +53,17 @@ func (h *hashSelectAction) getBuckets() {
 }
 
 func (h *hashSelectAction) handleMemSizeLogNotExisted() {
-	h.err = h.handleMemSizeLogNotExistedWithError()
+	h.getSizeLogFromClient()
+
+	h.root.sess.addNextCall(func() {
+		callback := func() {
+			h.getBuckets()
+			h.root.sess.addNextCall(func() {
+				h.handleBuckets()
+			})
+		}
+		h.handleSizeLogFromClient(callback, callback)
+	})
 }
 
 func (h *hashSelectAction) updateSizeLogFromDB() {
@@ -78,11 +88,11 @@ func (h *hashSelectAction) handleSizeLogFromDB(callback func()) {
 	)
 }
 
-func (h *hashSelectAction) handleSizeLogFromClient(callback func()) {
-	h.err = h.handleSizeLogFromClientWithError(callback)
+func (h *hashSelectAction) handleSizeLogFromClient(callback func(), redoCallback func()) {
+	h.err = h.handleSizeLogFromClientWithError(callback, redoCallback)
 }
 
-func (h *hashSelectAction) handleSizeLogFromClientWithError(callback func()) error {
+func (h *hashSelectAction) handleSizeLogFromClientWithError(callback func(), redoCallback func()) error {
 	newSizeLogOutput, err := h.sizeLogFn()
 	if err != nil {
 		return err
@@ -106,56 +116,49 @@ func (h *hashSelectAction) handleSizeLogFromClientWithError(callback func()) err
 		}
 
 		if len(h.sizeLogWaitLeaseDurations) == 0 {
-			if sess.options.failedOnWaitFinished {
-				return ErrLeaseNotGranted
-			} else {
-				h.sizeLogDBFn = h.root.db.GetSizeLog(h.ctx)
-				h.root.sess.addNextCall(func() {
-					h.updateSizeLogFromDB()
-					callback()
-				})
-				return nil
-			}
+			return ErrLeaseNotGranted
 		}
 		duration := h.sizeLogWaitLeaseDurations[0]
 		h.sizeLogWaitLeaseDurations = h.sizeLogWaitLeaseDurations[1:]
 
 		h.sizeLogFn = h.root.pipeline.LeaseGet(h.root.sizeLogKey)
 		h.root.sess.addDelayedCall(duration, func() {
-			h.handleSizeLogFromClient(callback)
+			h.handleSizeLogFromClient(callback, redoCallback)
 		})
 		return nil
 	}
 
-	sizeLog, err := strconv.ParseInt(string(newSizeLogOutput.Data), 10, 64)
+	sizeLogValue, err := strconv.ParseInt(string(newSizeLogOutput.Data), 10, 64)
 	if err != nil {
 		return err
 	}
-	// TODO compare with previous, handle difference
-	h.sizeLog = int(sizeLog)
+	sizeLog := int(sizeLogValue)
+	oldSizeLog := h.sizeLog
+	h.sizeLog = sizeLog
+
+	if oldSizeLog != sizeLog {
+		h.root.mem.SetNum(h.root.namespace, uint64(sizeLog))
+		redoCallback()
+		return nil
+	}
 
 	callback()
 
 	return nil
 }
 
-func (h *hashSelectAction) handleRetryGetSizeLogFromCache() {
-
-}
-
-func (h *hashSelectAction) handleMemSizeLogNotExistedWithError() error {
-	h.handleSizeLogFromClient(func() {
-		h.getBuckets()
-		h.root.sess.addNextCall(func() {
-			h.handleBuckets()
-		})
-	})
-	return nil
-}
-
 func (h *hashSelectAction) handleMemSizeLogExisted() {
-	h.handleSizeLogFromClient(func() {
-		h.handleBuckets()
+	h.getSizeLogFromClient()
+	h.getBuckets()
+	h.root.sess.addNextCall(func() {
+		h.handleSizeLogFromClient(func() {
+			h.handleBuckets()
+		}, func() {
+			h.getBuckets()
+			h.root.sess.addNextCall(func() {
+				h.handleBuckets()
+			})
+		})
 	})
 }
 
@@ -236,7 +239,6 @@ func (h *hashSelectAction) handleGetBucketFromDBWithError() error {
 			h.bucketWaitLeaseDurations = sess.options.waitLeaseDurations
 		}
 
-		// TODO Get Bucket From DB
 		if len(h.bucketWaitLeaseDurations) == 0 {
 			return ErrLeaseNotGranted
 		}

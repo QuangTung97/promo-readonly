@@ -22,20 +22,12 @@ func (h *hashImpl) SelectEntries(ctx context.Context, hash uint32) func() ([]Ent
 
 	sizeLogNum, ok := h.mem.GetNum(h.namespace)
 	if !ok {
-		action.getSizeLogFromClient()
-
-		h.sess.addNextCall(func() {
-			action.handleMemSizeLogNotExisted()
-		})
+		action.handleMemSizeLogNotExisted()
 	} else {
 		sizeLog := int(sizeLogNum)
 		action.sizeLog = sizeLog
 
-		action.getSizeLogFromClient()
-		action.getBuckets()
-		h.sess.addNextCall(func() {
-			action.handleMemSizeLogExisted()
-		})
+		action.handleMemSizeLogExisted()
 	}
 
 	return func() ([]Entry, error) {

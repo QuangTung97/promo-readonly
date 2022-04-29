@@ -400,7 +400,7 @@ func TestSelectEntries__When_Client_Get_Size_Log_Reject__Do_Retries(t *testing.T
 }
 
 func TestSelectEntries__When_Client_Get_Size_Log_Reject__Retries_All_Times(t *testing.T) {
-	h := newHashTest("sample", WithFailedOnWaitFinished(true))
+	h := newHashTest("sample")
 
 	h.stubGetNum(5)
 	h.stubLeaseGetOutputs([]LeaseGetOutput{
@@ -417,34 +417,6 @@ func TestSelectEntries__When_Client_Get_Size_Log_Reject__Retries_All_Times(t *te
 	assert.Equal(t, 4, len(h.pipe.LeaseGetCalls()))
 }
 
-func TestSelectEntries__When_Client_Get_Size_Log_Reject__Not_Failed_On_Finished__Call_GetDB(t *testing.T) {
-	h := newHashTest("sample", WithFailedOnWaitFinished(false))
-
-	h.stubGetNum(5)
-	h.stubLeaseGetOutputs([]LeaseGetOutput{
-		newLeaseGetRejected(),
-		newLeaseGetRejected(),
-		newLeaseGetRejected(),
-		newLeaseGetRejected(),
-	})
-	h.stubClientGet([][]Entry{
-		{},
-		{
-			newEntry(0xfc345678, 1, 2, 3),
-		},
-	})
-
-	h.stubDBGetSizeLog(6)
-
-	entries, err := h.hash.SelectEntries(newContext(), 0xfc345678)()
-	assert.Equal(t, nil, err)
-	assert.Equal(t, []Entry{
-		newEntry(0xfc345678, 1, 2, 3),
-	}, entries)
-
-	assert.Equal(t, 1, len(h.db.GetSizeLogCalls()))
-}
-
 func TestSelectEntries__When_Both_Bucket_Not_Found__Client_Lease_Get(t *testing.T) {
 	h := newHashTest("sample")
 
@@ -459,6 +431,39 @@ func TestSelectEntries__When_Both_Bucket_Not_Found__Client_Lease_Get(t *testing.
 	assert.Equal(t, 2, len(h.pipe.LeaseGetCalls()))
 	assert.Equal(t, "sample:size-log", h.pipe.LeaseGetCalls()[0].Key)
 	assert.Equal(t, "sample:5:f8000000", h.pipe.LeaseGetCalls()[1].Key)
+}
+
+func TestSelectEntries__When_Client_SizeLog_Too_Different__Get_Buckets_Again(t *testing.T) {
+	h := newHashTest("sample")
+
+	h.stubGetNum(5)
+	h.stubLeaseGetOutputs([]LeaseGetOutput{
+		{
+			Type: LeaseGetTypeOK,
+			Data: []byte("7"),
+		},
+	})
+
+	h.stubClientGet([][]Entry{
+		{}, {newEntry(0xdc345678, 1, 2, 3)},
+		{},
+		{newEntry(0xdc345678, 8, 8, 8), newEntry(0xdc345000, 5, 6, 7)},
+	})
+
+	entries, err := h.hash.SelectEntries(newContext(), 0xdc345678)()
+	assert.Equal(t, nil, err)
+
+	assert.Equal(t, 1, len(h.mem.SetNumCalls()))
+	assert.Equal(t, "sample", h.mem.SetNumCalls()[0].Key)
+	assert.Equal(t, uint64(7), h.mem.SetNumCalls()[0].Num)
+
+	assert.Equal(t, 4, len(h.pipe.GetCalls()))
+	assert.Equal(t, "sample:6:dc000000", h.pipe.GetCalls()[2].Key)
+	assert.Equal(t, "sample:7:dc000000", h.pipe.GetCalls()[3].Key)
+
+	assert.Equal(t, []Entry{
+		newEntry(0xdc345678, 8, 8, 8),
+	}, entries)
 }
 
 func newLeaseGetGranted(leaseID uint64) LeaseGetOutput {

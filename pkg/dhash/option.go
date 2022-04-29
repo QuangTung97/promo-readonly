@@ -3,8 +3,7 @@ package dhash
 import "time"
 
 type sessionOptions struct {
-	waitLeaseDurations   []time.Duration
-	failedOnWaitFinished bool
+	waitLeaseDurations []time.Duration
 }
 
 func defaultSessionOptions() sessionOptions {
@@ -14,7 +13,6 @@ func defaultSessionOptions() sessionOptions {
 			20 * time.Millisecond,
 			50 * time.Millisecond,
 		},
-		failedOnWaitFinished: true,
 	}
 }
 
@@ -33,12 +31,5 @@ type SessionOption func(opts *sessionOptions)
 func WithWaitLeaseDurations(durations []time.Duration) SessionOption {
 	return func(opts *sessionOptions) {
 		opts.waitLeaseDurations = durations
-	}
-}
-
-// WithFailedOnWaitFinished failed when waitLeaseDurations all waits finished, otherwise delete then access from DB
-func WithFailedOnWaitFinished(b bool) SessionOption {
-	return func(opts *sessionOptions) {
-		opts.failedOnWaitFinished = b
 	}
 }

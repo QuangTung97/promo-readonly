@@ -66,20 +66,29 @@ func (h *hashSelectAction) handleMemSizeLogNotExisted() {
 	})
 }
 
-func (h *hashSelectAction) updateSizeLogFromDB() {
+func (h *hashSelectAction) handleNewSizeLog(newSizeLog int, callback func(), redoCallback func()) {
+	oldSizeLog := h.sizeLog
+	h.sizeLog = newSizeLog
+
+	if oldSizeLog != newSizeLog {
+		h.root.mem.SetNum(h.root.namespace, uint64(newSizeLog))
+		redoCallback()
+	} else {
+		callback()
+	}
+}
+
+func (h *hashSelectAction) updateSizeLogFromDB(callback func(), redoCallback func()) {
 	dbSizeLog, err := h.sizeLogDBFn()
 	if err != nil {
 		h.err = err
 		return
 	}
-	h.root.mem.SetNum(h.root.namespace, dbSizeLog)
-	h.sizeLog = int(dbSizeLog)
+	h.handleNewSizeLog(int(dbSizeLog), callback, redoCallback)
 }
 
-func (h *hashSelectAction) handleSizeLogFromDB(callback func()) {
-	h.updateSizeLogFromDB()
-
-	callback()
+func (h *hashSelectAction) handleSizeLogFromDB(callback func(), redoCallback func()) {
+	h.updateSizeLogFromDB(callback, redoCallback)
 
 	h.root.pipeline.LeaseSet(
 		h.root.sizeLogKey,
@@ -102,7 +111,7 @@ func (h *hashSelectAction) handleSizeLogFromClientWithError(callback func(), red
 		h.sizeLogDBFn = h.root.db.GetSizeLog(h.ctx)
 		h.sizeLogLeaseID = newSizeLogOutput.LeaseID
 		h.root.sess.addNextCall(func() {
-			h.handleSizeLogFromDB(callback)
+			h.handleSizeLogFromDB(callback, redoCallback)
 		})
 		return nil
 	}
@@ -133,17 +142,7 @@ func (h *hashSelectAction) handleSizeLogFromClientWithError(callback func(), red
 		return err
 	}
 	sizeLog := int(sizeLogValue)
-	oldSizeLog := h.sizeLog
-	h.sizeLog = sizeLog
-
-	if oldSizeLog != sizeLog {
-		h.root.mem.SetNum(h.root.namespace, uint64(sizeLog))
-		redoCallback()
-		return nil
-	}
-
-	callback()
-
+	h.handleNewSizeLog(sizeLog, callback, redoCallback)
 	return nil
 }
 

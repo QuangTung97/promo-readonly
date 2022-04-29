@@ -358,13 +358,10 @@ func TestSelectEntries__When_Client_Get_Size_Log_Granted__Returns_Entry_From_Cli
 		LeaseID: 0x3344,
 	})
 	h.stubClientGet([][]Entry{
-		{},
-		{
-			newEntry(0xfc345678, 1, 2, 3),
-		},
+		{}, {newEntry(0xfc345678, 1, 2, 3)},
 	})
 
-	h.stubDBGetSizeLog(7)
+	h.stubDBGetSizeLog(5)
 
 	entries, err := h.hash.SelectEntries(newContext(), 0xfc345678)()
 	assert.Equal(t, nil, err)
@@ -389,7 +386,7 @@ func TestSelectEntries__When_Client_Get_Size_Log_Reject__Do_Retries(t *testing.T
 		},
 	})
 
-	h.stubDBGetSizeLog(6)
+	h.stubDBGetSizeLog(5)
 
 	_, _ = h.hash.SelectEntries(newContext(), 0xfc345678)()
 	assert.Equal(t, 3, len(h.pipe.LeaseGetCalls()))
@@ -443,6 +440,37 @@ func TestSelectEntries__When_Client_SizeLog_Too_Different__Get_Buckets_Again(t *
 			Data: []byte("7"),
 		},
 	})
+
+	h.stubClientGet([][]Entry{
+		{}, {newEntry(0xdc345678, 1, 2, 3)},
+		{},
+		{newEntry(0xdc345678, 8, 8, 8), newEntry(0xdc345000, 5, 6, 7)},
+	})
+
+	entries, err := h.hash.SelectEntries(newContext(), 0xdc345678)()
+	assert.Equal(t, nil, err)
+
+	assert.Equal(t, 1, len(h.mem.SetNumCalls()))
+	assert.Equal(t, "sample", h.mem.SetNumCalls()[0].Key)
+	assert.Equal(t, uint64(7), h.mem.SetNumCalls()[0].Num)
+
+	assert.Equal(t, 4, len(h.pipe.GetCalls()))
+	assert.Equal(t, "sample:6:dc000000", h.pipe.GetCalls()[2].Key)
+	assert.Equal(t, "sample:7:dc000000", h.pipe.GetCalls()[3].Key)
+
+	assert.Equal(t, []Entry{
+		newEntry(0xdc345678, 8, 8, 8),
+	}, entries)
+}
+
+func TestSelectEntries__When_DB_SizeLog_Too_Different__Get_Buckets_Again(t *testing.T) {
+	h := newHashTest("sample")
+
+	h.stubGetNum(5)
+	h.stubLeaseGetOutputs([]LeaseGetOutput{
+		newLeaseGetGranted(4488),
+	})
+	h.stubDBGetSizeLog(7)
 
 	h.stubClientGet([][]Entry{
 		{}, {newEntry(0xdc345678, 1, 2, 3)},

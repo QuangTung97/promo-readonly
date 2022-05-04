@@ -1,0 +1,30 @@
+server:
+  http:
+    host: localhost
+    port: 10080
+  grpc:
+    host: localhost
+    port: 10443
+
+log:
+  level: debug # debug, info, warn, error, dpanic, panic, fatal
+  mode: production # development
+  encoding: json # console
+
+mysql:
+  host: localhost
+  port: 3306
+  database: sample
+  username: root
+  password: 1
+  max_open_conns: 50
+  max_idle_conns: 20
+  options:
+    - key: 'parseTime'
+      value: 'true'
+    - key: 'loc'
+      value: 'Asia/Ho_Chi_Minh'
+
+jaeger:
+  host: localhost
+  port: 6831

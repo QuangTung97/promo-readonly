@@ -1,7 +1,7 @@
 .PHONY: run lint install-tools test test-race benchmark
 
 run:
-	go run cmd/main.go
+	go run cmd/server/main.go start
 
 lint:
 	$(foreach f,$(shell go fmt ./...),@echo "Forget to format file: ${f}"; exit 1;)

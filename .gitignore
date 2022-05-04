@@ -2,3 +2,4 @@
 /bin
 /**/*_mocks_test.go
 /coverage.out
+/config.yml

@@ -8,21 +8,19 @@ import (
 
 // Campaign ...
 type Campaign struct {
-	ID   int64  `db:"id"`
-	Name string `db:"name"`
+	ID     int64          `db:"id"`
+	Name   string         `db:"name"`
+	Status CampaignStatus `db:"status"`
+	Type   CampaignType   `db:"type"`
 
-	Status      CampaignStatus `db:"status"`
-	VoucherHash uint32         `db:"voucher_hash"`
-	VoucherCode string         `db:"voucher_code"`
-	StartTime   time.Time      `db:"start_time"`
-	EndTime     time.Time      `db:"end_time"`
-
-	Type CampaignType `db:"type"`
+	VoucherHash uint32    `db:"voucher_hash"`
+	VoucherCode string    `db:"voucher_code"`
+	StartTime   time.Time `db:"start_time"`
+	EndTime     time.Time `db:"end_time"`
 
 	BudgetMax        decimal.NullDecimal `db:"budget_max"`
 	CampaignUsageMax sql.NullInt64       `db:"campaign_usage_max"`
-
-	CustomerUsageMax int64 `db:"customer_usage_max"`
+	CustomerUsageMax int64               `db:"customer_usage_max"`
 
 	PeriodUsageType        PeriodUsageType `db:"period_usage_type"`
 	PeriodCustomerUsageMax sql.NullInt64   `db:"period_customer_usage_max"`

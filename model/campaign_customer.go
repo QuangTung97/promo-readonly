@@ -7,10 +7,10 @@ import (
 
 // CampaignCustomer ...
 type CampaignCustomer struct {
-	CampaignID int64 `db:"campaign_id"`
+	CampaignID int64  `db:"campaign_id"`
+	Hash       uint32 `db:"hash"`
+	Phone      string `db:"phone"`
 
-	Hash      uint32                 `db:"hash"`
-	Phone     string                 `db:"phone"`
 	Status    CampaignCustomerStatus `db:"status"`
 	StartTime sql.NullTime           `db:"start_time"`
 	EndTime   sql.NullTime           `db:"end_time"`

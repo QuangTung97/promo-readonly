@@ -1,4 +1,4 @@
-.PHONY: run lint install-tools test test-race benchmark
+.PHONY: run lint install-tools test test-race benchmark migrate-up migrate-down-1
 
 run:
 	go run cmd/server/main.go start
@@ -20,3 +20,9 @@ test-race:
 
 benchmark:
 	echo "TODO"
+
+migrate-up:
+	go run cmd/migrate/main.go up
+
+migrate-down-1:
+	go run cmd/migrate/main.go down 1

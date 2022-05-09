@@ -18,15 +18,15 @@ jobs:
         ports:
           - 11211:11211
       mysql:
-        image: mysql:5.7
+        image: mysql:8.0
         env:
           MYSQL_DATABASE: readonly
           MYSQL_HOST: 127.0.0.1
           MYSQL_USER: admin
+          MYSQL_PASSWORD: 123456
           MYSQL_ROOT_PASSWORD: 123456
         ports:
           - 3306:3306
-        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-go@v2
@@ -39,7 +39,7 @@ jobs:
       - name: Lint
         run: make lint
       - name: Set up integration test
-        run: cp config.tmp.yml config_test.yml && sleep 20
+        run: cp config.tmp.yml config_test.yml
       - name: Test
         run: make test
       - name: Test Race

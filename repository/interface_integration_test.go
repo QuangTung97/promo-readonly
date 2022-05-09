@@ -1,5 +1,3 @@
-// +build integration
-
 package repository
 
 import (
@@ -8,10 +6,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
-
-func newContext() context.Context {
-	return context.Background()
-}
 
 func TestProvider_Readonly__GetReadonly(t *testing.T) {
 	tc := integration.NewTestCase()

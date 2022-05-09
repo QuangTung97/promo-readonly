@@ -34,12 +34,17 @@ type providerImpl struct {
 }
 
 // NewProvider ...
-func NewProvider() Provider {
-	return &providerImpl{}
+func NewProvider(db *sqlx.DB) Provider {
+	return &providerImpl{db: db}
 }
 
 // Transact ...
 func (p *providerImpl) Transact(ctx context.Context, fn func(ctx context.Context) error) (err error) {
+	_, ok := getTxFromContext(ctx)
+	if ok {
+		return fn(ctx)
+	}
+
 	tx, err := p.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return err

@@ -5,9 +5,14 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+func getTxFromContext(ctx context.Context) (ctxTxValue, bool) {
+	tx, ok := ctx.Value(ctxTxKey).(ctxTxValue)
+	return tx, ok
+}
+
 // GetTx get Transaction from context
 func GetTx(ctx context.Context) Transaction {
-	tx, ok := ctx.Value(ctxTxKey).(ctxTxValue)
+	tx, ok := getTxFromContext(ctx)
 	if !ok {
 		panic("Not found transaction")
 	}
@@ -17,10 +22,16 @@ func GetTx(ctx context.Context) Transaction {
 // GetReadonly get Readonly from context
 func GetReadonly(ctx context.Context) Readonly {
 	db, ok := ctx.Value(ctxReadonlyKey).(ctxReadonlyValue)
-	if !ok {
-		panic("Not found readonly repository")
+	if ok {
+		return db.db
 	}
-	return db.db
+
+	tx, ok := getTxFromContext(ctx)
+	if ok {
+		return tx.tx
+	}
+
+	panic("Not found readonly repository")
 }
 
 type ctxTxKeyType struct {

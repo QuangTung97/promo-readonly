@@ -44,6 +44,21 @@ func Load() Config {
 	vip.SetConfigType("yml")
 	vip.AddConfigPath(".")
 
+	return loadConfigWithViper(vip)
+}
+
+// LoadTestConfig for integration testing
+func LoadTestConfig(path string) Config {
+	vip := viper.New()
+
+	vip.SetConfigName("config_test")
+	vip.SetConfigType("yml")
+	vip.AddConfigPath(path)
+
+	return loadConfigWithViper(vip)
+}
+
+func loadConfigWithViper(vip *viper.Viper) Config {
 	vip.SetEnvPrefix("docker")
 	vip.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	vip.AutomaticEnv()
@@ -67,5 +82,6 @@ func Load() Config {
 	if err != nil {
 		panic(err)
 	}
+
 	return cfg
 }

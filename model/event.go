@@ -22,5 +22,5 @@ const (
 	AggregateTypeBlacklist AggregateType = 1
 
 	// AggregateTypeCampaign ...
-	AggregateTypeCampaign AggregateType = 4
+	AggregateTypeCampaign AggregateType = 2
 )

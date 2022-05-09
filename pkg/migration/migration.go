@@ -8,6 +8,7 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/spf13/cobra"
 	"io/ioutil"
+	"path"
 	"strconv"
 	"time"
 )
@@ -119,6 +120,8 @@ func migrateCreateCommand(migrationDir string) *cobra.Command {
 	}
 }
 
+const migrationDirectory = "migrations"
+
 // MigrateCommand the command for migration
 func MigrateCommand(dsn string) *cobra.Command {
 	databaseURL := fmt.Sprintf("mysql://%s", dsn)
@@ -127,11 +130,9 @@ func MigrateCommand(dsn string) *cobra.Command {
 		Short: "database migration command",
 	}
 
-	const migrationDirectory = "migrations"
 	sourceURL := fmt.Sprintf("file://%s", migrationDirectory)
 
 	fmt.Println("Source URL:", sourceURL)
-	fmt.Println("Database URL:", databaseURL)
 	fmt.Println("------------------------------------------------------------")
 
 	cmd.AddCommand(
@@ -142,4 +143,27 @@ func MigrateCommand(dsn string) *cobra.Command {
 	)
 
 	return cmd
+}
+
+// MigrateUpForTesting ...
+func MigrateUpForTesting(rootDir string, dsn string) {
+	sourceURL := fmt.Sprintf("file://%s", path.Join(rootDir, migrationDirectory))
+	databaseURL := fmt.Sprintf("mysql://%s", dsn)
+
+	fmt.Println("SourceURL:", sourceURL)
+	fmt.Println("DatabaseURL:", databaseURL)
+
+	m, err := migrate.New(sourceURL, databaseURL)
+	if err != nil {
+		panic(err)
+	}
+
+	err = m.Up()
+	if err == migrate.ErrNoChange {
+		fmt.Println("No change in migration")
+		return
+	}
+	if err != nil {
+		panic(err)
+	}
 }

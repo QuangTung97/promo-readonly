@@ -14,6 +14,12 @@ type BlacklistCustomer struct {
 	UpdatedAt time.Time `db:"updated_at"`
 }
 
+// NullBlacklistCustomer ...
+type NullBlacklistCustomer struct {
+	Valid    bool
+	Customer BlacklistCustomer
+}
+
 // BlacklistCustomerStatus ...
 type BlacklistCustomerStatus int
 

@@ -7,13 +7,14 @@ on:
 env:
   MYSQL_DATABASE: readonly
   MYSQL_HOST: 127.0.0.1
-  MYSQL_USER: root
+  MYSQL_USER: admin
+  MYSQL_PASSWORD: 123456
   MYSQL_ROOT_PASSWORD: 123456
 
   DOCKER_MYSQL_HOST: 127.0.0.1
   DOCKER_MYSQL_DATABASE: readonly
-  DOCKER_MYSQL_USERNAME: root
-  DOCKER_MYSQL_ROOT_PASSWORD: 123456
+  DOCKER_MYSQL_USERNAME: admin
+  DOCKER_MYSQL_PASSWORD: 123456
 jobs:
   build:
     runs-on: ubuntu-20.04
@@ -38,7 +39,7 @@ jobs:
       - name: Lint
         run: make lint
       - name: Set up integration test
-        run: cp config.tmp.yml config_test.yml
+        run: cp config.tmp.yml config_test.yml && sleep 20
       - name: Test
         run: make test
       - name: Test Race

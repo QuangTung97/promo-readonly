@@ -17,8 +17,8 @@ mysql:
   database: sample
   username: root
   password: 1
-  max_open_conns: 50
-  max_idle_conns: 20
+  max_open_conns: 10
+  max_idle_conns: 5
   options:
     - key: 'parseTime'
       value: 'true'

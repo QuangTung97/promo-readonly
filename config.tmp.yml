@@ -22,8 +22,6 @@ mysql:
   options:
     - key: 'parseTime'
       value: 'true'
-    - key: 'loc'
-      value: 'Asia/Ho_Chi_Minh'
 
 jaeger:
   host: localhost

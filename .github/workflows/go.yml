@@ -4,6 +4,15 @@ on:
     branches: [ master ]
   pull_request:
     branches: [ master ]
+env:
+  MYSQL_DATABASE: readonly
+  MYSQL_USER: root
+  MYSQL_ROOT_PASSWORD: 123456
+
+  DOCKER_MYSQL_HOST: mysql
+  DOCKER_MYSQL_DATABASE: readonly
+  DOCKER_MYSQL_USERNAME: root
+  DOCKER_MYSQL_ROOT_PASSWORD: 123456
 jobs:
   build:
     runs-on: ubuntu-20.04
@@ -12,6 +21,10 @@ jobs:
         image: memcached
         ports:
           - 11211:11211
+      mysql:
+        image: mysql:8.0
+        ports:
+          - 3306:3306
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-go@v2
@@ -23,6 +36,8 @@ jobs:
         run: go generate ./...
       - name: Lint
         run: make lint
+      - name: Set up integration test
+        run: cp config.tmp.yml config_test.yml
       - name: Test
         run: make test
       - name: Test Race

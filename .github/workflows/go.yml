@@ -5,12 +5,6 @@ on:
   pull_request:
     branches: [ master ]
 env:
-  MYSQL_DATABASE: readonly
-  MYSQL_HOST: 127.0.0.1
-  MYSQL_USER: admin
-  MYSQL_PASSWORD: 123456
-  MYSQL_ROOT_PASSWORD: 123456
-
   DOCKER_MYSQL_HOST: 127.0.0.1
   DOCKER_MYSQL_DATABASE: readonly
   DOCKER_MYSQL_USERNAME: admin
@@ -24,9 +18,15 @@ jobs:
         ports:
           - 11211:11211
       mysql:
-        image: mysql:8.0
+        image: mysql:5.7
+        env:
+          MYSQL_DATABASE: readonly
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_USER: admin
+          MYSQL_ROOT_PASSWORD: 123456
         ports:
           - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-go@v2

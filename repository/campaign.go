@@ -11,7 +11,7 @@ type Campaign interface {
 	FindCampaignsByVoucher(
 		ctx context.Context, voucherHash uint32, voucherCode string, now time.Time,
 	) ([]model.Campaign, error)
-	LockCampaign(ctx context.Context, campaignID int64) error
+	GetCampaignWithLock(ctx context.Context, campaignID int64) (model.Campaign, error)
 	UpsertCampaign(ctx context.Context, campaign model.Campaign) error
 }
 
@@ -28,10 +28,7 @@ func (c *campaignImpl) FindCampaignsByVoucher(
 	ctx context.Context, voucherHash uint32, voucherCode string, now time.Time,
 ) ([]model.Campaign, error) {
 	query := `
-SELECT id, name, status, type, voucher_hash, voucher_code, start_time, end_time,
-	budget_max, campaign_usage_max, customer_usage_max,
-	period_usage_type, period_customer_usage_max, period_term_type,
-	all_merchants
+SELECT id, voucher_hash, voucher_code, start_time, end_time
 FROM campaign
 WHERE voucher_hash = ? AND voucher_code = ? AND ? < end_time
 `
@@ -40,11 +37,18 @@ WHERE voucher_hash = ? AND voucher_code = ? AND ? < end_time
 	return result, err
 }
 
-// LockCampaign ...
-func (c *campaignImpl) LockCampaign(ctx context.Context, campaignID int64) error {
-	query := `SELECT id FROM campaign WHERE id = ? FOR UPDATE`
-	var id int64
-	return GetTx(ctx).GetContext(ctx, &id, query, campaignID)
+// GetCampaignWithLock ...
+func (c *campaignImpl) GetCampaignWithLock(ctx context.Context, campaignID int64) (model.Campaign, error) {
+	query := `
+SELECT id, name, status, type, voucher_hash, voucher_code, start_time, end_time,
+	budget_max, campaign_usage_max, customer_usage_max,
+	period_usage_type, period_customer_usage_max, period_term_type,
+	all_merchants
+FROM campaign WHERE id = ? FOR UPDATE
+`
+	var result model.Campaign
+	err := GetTx(ctx).GetContext(ctx, &result, query, campaignID)
+	return result, err
 }
 
 // UpsertCampaign ...

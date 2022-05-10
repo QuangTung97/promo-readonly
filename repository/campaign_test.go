@@ -89,13 +89,22 @@ func TestCampaign(t *testing.T) {
 	assert.Equal(t, nil, err)
 
 	campaign01.ID = 1
-	assert.Equal(t, []model.Campaign{campaign01}, campaigns)
+	assert.Equal(t, []model.Campaign{{
+		ID:          1,
+		VoucherHash: campaign01.VoucherHash,
+		VoucherCode: campaign01.VoucherCode,
+		StartTime:   campaign01.StartTime,
+		EndTime:     campaign01.EndTime,
+	}}, campaigns)
 
+	var getCampaign model.Campaign
 	// Lock Campaign
-	err = tc.provider.Transact(newContext(), func(ctx context.Context) error {
-		return repo.LockCampaign(ctx, 1)
+	_ = tc.provider.Transact(newContext(), func(ctx context.Context) error {
+		getCampaign, err = repo.GetCampaignWithLock(ctx, 1)
+		return nil
 	})
 	assert.Equal(t, nil, err)
+	assert.Equal(t, campaign01, getCampaign)
 
 	// Upsert
 	campaign01.Name = "name 02"
@@ -121,8 +130,10 @@ func TestCampaign(t *testing.T) {
 	assert.Equal(t, nil, err)
 
 	// Get 3
-	campaigns, err = repo.FindCampaignsByVoucher(ctx,
-		4400, "VOUCHER02", newTime("2022-07-13T10:00:00+07:00"))
+	_ = tc.provider.Transact(newContext(), func(ctx context.Context) error {
+		getCampaign, err = repo.GetCampaignWithLock(ctx, 1)
+		return nil
+	})
 	assert.Equal(t, nil, err)
-	assert.Equal(t, []model.Campaign{campaign01}, campaigns)
+	assert.Equal(t, campaign01, getCampaign)
 }

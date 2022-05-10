@@ -14,6 +14,9 @@ type Blacklist interface {
 
 	GetBlacklistMerchants(ctx context.Context, keys []BlacklistMerchantKey) ([]model.BlacklistMerchant, error)
 	UpsertBlacklistMerchants(ctx context.Context, merchants []model.BlacklistMerchant) error
+
+	GetBlacklistTerminals(ctx context.Context, keys []BlacklistTerminalKey) ([]model.BlacklistTerminal, error)
+	UpsertBlacklistTerminals(ctx context.Context, terminals []model.BlacklistTerminal) error
 }
 
 // BlacklistCustomerKey ...
@@ -26,6 +29,13 @@ type BlacklistCustomerKey struct {
 type BlacklistMerchantKey struct {
 	Hash         uint32
 	MerchantCode string
+}
+
+// BlacklistTerminalKey ...
+type BlacklistTerminalKey struct {
+	Hash         uint32
+	MerchantCode string
+	TerminalCode string
 }
 
 type blacklistRepo struct {
@@ -133,5 +143,53 @@ ON DUPLICATE KEY UPDATE
 	end_time = NEW.end_time
 `
 	_, err := GetTx(ctx).NamedExecContext(ctx, query, merchants)
+	return err
+}
+
+// GetBlacklistTerminals ...
+func (b *blacklistRepo) GetBlacklistTerminals(
+	ctx context.Context, keys []BlacklistTerminalKey,
+) ([]model.BlacklistTerminal, error) {
+	if len(keys) == 0 {
+		return nil, nil
+	}
+
+	var buf strings.Builder
+	const placeholder = "(?, ?, ?)"
+	buf.WriteString(placeholder)
+	for range keys[1:] {
+		buf.WriteString("," + placeholder)
+	}
+
+	query := fmt.Sprintf(`
+SELECT hash, merchant_code, terminal_code, status, start_time, end_time
+FROM blacklist_terminal WHERE (hash, merchant_code, terminal_code) IN (%s)
+`, buf.String())
+
+	args := make([]interface{}, 0, 3*len(keys))
+	for _, key := range keys {
+		args = append(args, key.Hash, key.MerchantCode, key.TerminalCode)
+	}
+
+	var result []model.BlacklistTerminal
+	err := GetReadonly(ctx).SelectContext(ctx, &result, query, args...)
+	return result, err
+}
+
+// UpsertBlacklistTerminals ...
+func (b *blacklistRepo) UpsertBlacklistTerminals(ctx context.Context, terminals []model.BlacklistTerminal) error {
+	if len(terminals) == 0 {
+		return nil
+	}
+
+	query := `
+INSERT INTO blacklist_terminal (hash, merchant_code, terminal_code, status, start_time, end_time)
+VALUES (:hash, :merchant_code, :terminal_code, :status, :start_time, :end_time) AS NEW
+ON DUPLICATE KEY UPDATE
+	status = NEW.status,
+	start_time = NEW.start_time,
+	end_time = NEW.end_time
+`
+	_, err := GetTx(ctx).NamedExecContext(ctx, query, terminals)
 	return err
 }

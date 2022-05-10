@@ -42,6 +42,32 @@ func newNullTime(s string) sql.NullTime {
 	}
 }
 
+func TestBlacklist_Empty_Keys(t *testing.T) {
+	repo := NewBlacklist()
+	ctx := newContext()
+
+	customers, err := repo.GetBlacklistCustomers(ctx, nil)
+	assert.Equal(t, nil, err)
+	assert.Nil(t, customers)
+
+	merchants, err := repo.GetBlacklistMerchants(ctx, nil)
+	assert.Equal(t, nil, err)
+	assert.Nil(t, merchants)
+
+	terminals, err := repo.GetBlacklistTerminals(ctx, nil)
+	assert.Equal(t, nil, err)
+	assert.Nil(t, terminals)
+
+	err = repo.UpsertBlacklistCustomers(ctx, nil)
+	assert.Equal(t, nil, err)
+
+	err = repo.UpsertBlacklistMerchants(ctx, nil)
+	assert.Equal(t, nil, err)
+
+	err = repo.UpsertBlacklistTerminals(ctx, nil)
+	assert.Equal(t, nil, err)
+}
+
 func TestBlacklist_Customers(t *testing.T) {
 	tc := newBlacklistTest()
 	tc.tc.Truncate("blacklist_customer")
@@ -205,4 +231,93 @@ func TestBlacklist_Merchants(t *testing.T) {
 	merchants, err = repo.GetBlacklistMerchants(ctx, []BlacklistMerchantKey{key01, key02})
 	assert.Equal(t, nil, err)
 	assert.Equal(t, upsertMerchants, merchants)
+}
+
+func TestBlacklist_Terminals(t *testing.T) {
+	tc := newBlacklistTest()
+	tc.tc.Truncate("blacklist_terminal")
+
+	repo := NewBlacklist()
+
+	const hash01 = 3300
+	const merchantCode01 = "MERCHANT01"
+	const terminalCode01 = "TERM01"
+
+	const hash02 = 4400
+	const merchantCode02 = "MERCHANT02"
+	const terminalCode02 = "TERM02"
+
+	ctx := tc.provider.Readonly(newContext())
+
+	key01 := BlacklistTerminalKey{Hash: hash01, MerchantCode: merchantCode01, TerminalCode: terminalCode01}
+	key02 := BlacklistTerminalKey{Hash: hash02, MerchantCode: merchantCode02, TerminalCode: terminalCode02}
+
+	//---------------------------------------
+	// Get Terminals 1
+	//---------------------------------------
+	terminals, err := repo.GetBlacklistTerminals(ctx, []BlacklistTerminalKey{key01})
+	assert.Equal(t, nil, err)
+	assert.Nil(t, terminals)
+
+	//---------------------------------------
+	// Insert Terminals
+	//---------------------------------------
+	insertTerminals := []model.BlacklistTerminal{
+		{
+			Hash:         hash01,
+			MerchantCode: merchantCode01,
+			TerminalCode: terminalCode01,
+			Status:       model.BlacklistTerminalStatusActive,
+			StartTime:    newNullTime("2022-05-11T10:00:00+07:00"),
+			EndTime:      newNullTime("2022-05-18T10:00:00+07:00"),
+		},
+		{
+			Hash:         hash02,
+			MerchantCode: merchantCode02,
+			TerminalCode: terminalCode02,
+			Status:       model.BlacklistTerminalStatusInactive,
+		},
+	}
+	err = tc.provider.Transact(newContext(), func(ctx context.Context) error {
+		return repo.UpsertBlacklistTerminals(ctx, insertTerminals)
+	})
+	assert.Equal(t, nil, err)
+
+	//---------------------------------------
+	// Get Terminals 2
+	//---------------------------------------
+	terminals, err = repo.GetBlacklistTerminals(ctx, []BlacklistTerminalKey{key01, key02})
+	assert.Equal(t, nil, err)
+	assert.Equal(t, insertTerminals, terminals)
+
+	//---------------------------------------
+	// Upsert Terminals
+	//---------------------------------------
+	upsertTerminals := []model.BlacklistTerminal{
+		{
+			Hash:         hash01,
+			MerchantCode: merchantCode01,
+			TerminalCode: terminalCode01,
+			Status:       model.BlacklistTerminalStatusInactive,
+			StartTime:    newNullTime("2022-07-11T10:00:00+07:00"),
+			EndTime:      newNullTime("2022-07-18T10:00:00+07:00"),
+		},
+		{
+			Hash:         hash02,
+			MerchantCode: merchantCode02,
+			TerminalCode: terminalCode02,
+			Status:       model.BlacklistTerminalStatusActive,
+		},
+	}
+	err = tc.provider.Transact(newContext(), func(ctx context.Context) error {
+		return repo.UpsertBlacklistTerminals(ctx, upsertTerminals)
+	})
+	assert.Equal(t, nil, err)
+
+	//---------------------------------------
+	// Get Terminals 3
+	//---------------------------------------
+	terminals, err = repo.GetBlacklistTerminals(ctx, []BlacklistTerminalKey{key01, key02})
+	assert.Equal(t, nil, err)
+	assert.Equal(t, upsertTerminals, terminals)
 }

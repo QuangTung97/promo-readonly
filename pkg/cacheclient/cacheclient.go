@@ -31,6 +31,16 @@ func New(addr string, numConns int) *Client {
 	}
 }
 
+// UnsafeFlushAll ...
+func (c *Client) UnsafeFlushAll() error {
+	return c.client.Pipeline().FlushAll()()
+}
+
+// Close ...
+func (c *Client) Close() error {
+	return c.client.Close()
+}
+
 // Pipeline ...
 func (c *Client) Pipeline() dhash.CachePipeline {
 	return Pipeline{

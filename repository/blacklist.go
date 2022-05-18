@@ -66,6 +66,9 @@ FROM blacklist_config WHERE id = 1
 	if err == sql.ErrNoRows {
 		return model.BlacklistConfig{}, nil
 	}
+	if err != nil {
+		return model.BlacklistConfig{}, err
+	}
 	return result, err
 }
 

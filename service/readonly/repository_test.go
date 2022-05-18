@@ -3,8 +3,13 @@ package readonly
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"github.com/QuangTung97/promo-readonly/model"
+	"github.com/QuangTung97/promo-readonly/pkg/cacheclient"
 	"github.com/QuangTung97/promo-readonly/pkg/dhash"
+	"github.com/QuangTung97/promo-readonly/pkg/integration"
+	"github.com/QuangTung97/promo-readonly/pkg/memtable"
+	"github.com/QuangTung97/promo-readonly/pkg/util"
 	"github.com/QuangTung97/promo-readonly/repository"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -51,129 +56,134 @@ func TestLog2Int(t *testing.T) {
 	assert.Equal(t, uint64(7), log2Int(65))
 }
 
-func TestBlacklistCustomerHashDB__GetSizeLog__For_Empty_Customers(t *testing.T) {
-	repo := &repository.BlacklistMock{}
-	db := newBlacklistCustomerHashDB(repo)
+type repoTest struct {
+	client    *cacheclient.Client
+	provider  repository.Provider
+	mem       *memtable.MemTable
+	repo      IRepository
+	blacklist repository.Blacklist
+}
 
-	repo.GetConfigFunc = func(ctx context.Context) (model.BlacklistConfig, error) {
-		return model.BlacklistConfig{
-			CustomerCount: 0,
-		}, nil
+func newRepoTest(tc *integration.TestCase) *repoTest {
+	tc.Truncate("blacklist_config")
+	tc.Truncate("blacklist_customer")
+
+	client := cacheclient.New("localhost:11211", 1)
+	err := client.UnsafeFlushAll()
+	if err != nil {
+		panic(err)
 	}
 
-	fn1 := db.GetSizeLog(newContext())
-	fn2 := db.GetSizeLog(newContext())
+	repoProvider := repository.NewProvider(tc.DB)
 
-	num, err := fn1()
+	blacklistRepo := repository.NewBlacklist()
+
+	mem := memtable.New(100 * 1024)
+
+	provider := dhash.NewProvider(mem, client)
+	sess := provider.NewSession()
+	repo := NewRepository(sess, blacklistRepo)
+
+	return &repoTest{
+		client:    client,
+		provider:  repoProvider,
+		mem:       mem,
+		repo:      repo,
+		blacklist: blacklistRepo,
+	}
+}
+
+func (r *repoTest) finish() {
+	err := r.client.Close()
+	if err != nil {
+		panic(err)
+	}
+}
+
+func TestRepository_GetBlacklistCustomer__Found(t *testing.T) {
+	tc := integration.NewTestCase()
+	r := newRepoTest(tc)
+	defer r.finish()
+
+	err := r.provider.Transact(newContext(), func(ctx context.Context) error {
+		return r.blacklist.UpsertBlacklistCustomers(ctx, []model.BlacklistCustomer{
+			{
+				Hash:      util.HashFunc("0987000111"),
+				Phone:     "0987000111",
+				Status:    model.BlacklistCustomerStatusActive,
+				StartTime: newNullTime("2022-05-08T10:00:00+07:00"),
+				EndTime:   newNullTime("2022-05-18T10:00:00+07:00"),
+			},
+		})
+	})
 	assert.Equal(t, nil, err)
+
+	ctx := r.provider.Readonly(newContext())
+
+	start := time.Now()
+	fn1 := r.repo.GetBlacklistCustomer(ctx, "0987000111")
+	customer1, err := fn1()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, model.NullBlacklistCustomer{
+		Valid: true,
+		Customer: model.BlacklistCustomer{
+			Hash:      util.HashFunc("0987000111"),
+			Phone:     "0987000111",
+			Status:    model.BlacklistCustomerStatusActive,
+			StartTime: newNullTime("2022-05-08T10:00:00+07:00"),
+			EndTime:   newNullTime("2022-05-18T10:00:00+07:00"),
+		},
+	}, customer1)
+	fmt.Println("First Get:", time.Since(start))
+
+	// Get Second Times
+	start = time.Now()
+	fn1 = r.repo.GetBlacklistCustomer(ctx, "0987000111")
+	customer1, err = fn1()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, model.NullBlacklistCustomer{
+		Valid: true,
+		Customer: model.BlacklistCustomer{
+			Hash:      util.HashFunc("0987000111"),
+			Phone:     "0987000111",
+			Status:    model.BlacklistCustomerStatusActive,
+			StartTime: newNullTime("2022-05-08T10:00:00+07:00"),
+			EndTime:   newNullTime("2022-05-18T10:00:00+07:00"),
+		},
+	}, customer1)
+	fmt.Println("Second Get:", time.Since(start))
+
+	// Get Mem
+	num, ok := r.mem.GetNum("bl:cst")
+	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(0), num)
 
-	_, _ = fn2()
-
-	assert.Equal(t, 1, len(repo.GetConfigCalls()))
-}
-
-func TestBlacklistCustomerHashDB__GetSizeLog__Multiple_Customers(t *testing.T) {
-	repo := &repository.BlacklistMock{}
-	db := newBlacklistCustomerHashDB(repo)
-
-	repo.GetConfigFunc = func(ctx context.Context) (model.BlacklistConfig, error) {
-		return model.BlacklistConfig{
-			CustomerCount: 15,
-		}, nil
-	}
-
-	fn1 := db.GetSizeLog(newContext())
-	fn2 := db.GetSizeLog(newContext())
-
-	num, err := fn1()
+	// Get Cache
+	pipe := r.client.Pipeline()
+	getOutput, err := pipe.Get("bl:cst:size-log")()
 	assert.Equal(t, nil, err)
-	assert.Equal(t, uint64(4), num)
+	assert.Equal(t, dhash.GetOutput{
+		Found: true, Data: []byte("0"),
+	}, getOutput)
 
-	_, _ = fn2()
-
-	assert.Equal(t, 1, len(repo.GetConfigCalls()))
-}
-
-func TestBlacklistCustomerHashDB__Select_Entries(t *testing.T) {
-	repo := &repository.BlacklistMock{}
-	db := newBlacklistCustomerHashDB(repo)
-
-	repo.SelectBlacklistCustomersFunc = func(
-		ctx context.Context, ranges []repository.HashRange,
-	) ([]model.BlacklistCustomer, error) {
-		return nil, nil
-	}
-
-	fn1 := db.SelectEntries(newContext(), 20, newNullUint32(100))
-	fn2 := db.SelectEntries(newContext(), 220, dhash.NullUint32{})
-
-	_, _ = fn1()
-	_, _ = fn2()
-
-	assert.Equal(t, 1, len(repo.SelectBlacklistCustomersCalls()))
-	assert.Equal(t, []repository.HashRange{
-		{
-			Begin: 20,
-			End:   newNullUint32(100),
-		},
-		{
-			Begin: 220,
-		},
-	}, repo.SelectBlacklistCustomersCalls()[0].Ranges)
-}
-
-func TestBlacklistCustomerHashDB__Select_Entries__Returns_Correct_Data(t *testing.T) {
-	repo := &repository.BlacklistMock{}
-	db := newBlacklistCustomerHashDB(repo)
-
-	repo.SelectBlacklistCustomersFunc = func(
-		ctx context.Context, ranges []repository.HashRange,
-	) ([]model.BlacklistCustomer, error) {
-		return []model.BlacklistCustomer{
-			{
-				Hash:      22,
-				Phone:     "0987000111",
-				Status:    model.BlacklistCustomerStatusActive,
-				StartTime: newNullTime("2022-05-12T10:00:00+07:00"),
-				EndTime:   newNullTime("2022-05-22T10:00:00+07:00"),
-			},
-			{
-				Hash:   300,
-				Phone:  "0987000222",
-				Status: model.BlacklistCustomerStatusInactive,
-			},
-		}, nil
-	}
-
-	fn1 := db.SelectEntries(newContext(), 20, newNullUint32(100))
-	fn2 := db.SelectEntries(newContext(), 220, dhash.NullUint32{})
-
-	entries1, err := fn1()
+	getOutput, err = pipe.Get("bl:cst:0:00000000")()
 	assert.Equal(t, nil, err)
-	assert.Equal(t, []dhash.Entry{
-		{
-			Hash: 22,
-			Data: marshalBlacklistCustomer(model.BlacklistCustomer{
-				Hash:      22,
-				Phone:     "0987000111",
-				Status:    model.BlacklistCustomerStatusActive,
-				StartTime: newNullTime("2022-05-12T10:00:00+07:00"),
-				EndTime:   newNullTime("2022-05-22T10:00:00+07:00"),
-			}),
-		},
-	}, entries1)
+	assert.Equal(t, true, getOutput.Found)
 
-	entries2, err := fn2()
+	// Get Third Times
+	start = time.Now()
+	fn1 = r.repo.GetBlacklistCustomer(ctx, "0987000111")
+	customer1, err = fn1()
 	assert.Equal(t, nil, err)
-	assert.Equal(t, []dhash.Entry{
-		{
-			Hash: 300,
-			Data: marshalBlacklistCustomer(model.BlacklistCustomer{
-				Hash:   300,
-				Phone:  "0987000222",
-				Status: model.BlacklistCustomerStatusInactive,
-			}),
+	assert.Equal(t, model.NullBlacklistCustomer{
+		Valid: true,
+		Customer: model.BlacklistCustomer{
+			Hash:      util.HashFunc("0987000111"),
+			Phone:     "0987000111",
+			Status:    model.BlacklistCustomerStatusActive,
+			StartTime: newNullTime("2022-05-08T10:00:00+07:00"),
+			EndTime:   newNullTime("2022-05-18T10:00:00+07:00"),
 		},
-	}, entries2)
+	}, customer1)
+	fmt.Println("Third Get:", time.Since(start))
 }

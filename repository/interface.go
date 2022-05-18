@@ -52,6 +52,7 @@ func (p *providerImpl) Transact(ctx context.Context, fn func(ctx context.Context
 	defer func() {
 		if r := recover(); r != nil {
 			err = tx.Rollback()
+			panic(r)
 		} else if err != nil {
 			_ = tx.Rollback()
 		}

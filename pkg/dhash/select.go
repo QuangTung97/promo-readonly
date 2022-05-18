@@ -2,6 +2,7 @@ package dhash
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strconv"
 	"time"
@@ -19,7 +20,7 @@ type hashSelectAction struct {
 	bucketLeaseGet func() (LeaseGetOutput, error)
 	entriesDBFn    func() ([]Entry, error)
 
-	sizeLog        int
+	sizeLog        sql.NullInt64
 	sizeLogLeaseID uint64
 	bucketLeaseID  uint64
 
@@ -41,12 +42,16 @@ func (h *hashSelectAction) getSizeLogFromClient() {
 }
 
 func computeBucketKey(ns string, sizeLog int, hash uint32) string {
-	return fmt.Sprintf("%s:%d:%x", ns, sizeLog, startOfSlot(hash, sizeLog))
+	return fmt.Sprintf("%s:%d:%08x", ns, sizeLog, startOfSlot(hash, sizeLog))
 }
 
 func (h *hashSelectAction) getBuckets() {
-	key1 := computeBucketKey(h.root.namespace, h.sizeLog-1, h.hash)
-	key2 := computeBucketKey(h.root.namespace, h.sizeLog, h.hash)
+	if !h.sizeLog.Valid {
+		panic("Must be valid")
+	}
+	sizeLog := int(h.sizeLog.Int64)
+	key1 := computeBucketKey(h.root.namespace, sizeLog-1, h.hash) // TODO Size Log = 0, Should Not Negative
+	key2 := computeBucketKey(h.root.namespace, sizeLog, h.hash)
 
 	h.bucketFn1 = h.root.pipeline.Get(key1)
 	h.bucketFn2 = h.root.pipeline.Get(key2)
@@ -66,12 +71,16 @@ func (h *hashSelectAction) handleMemSizeLogNotExisted() {
 	})
 }
 
-func (h *hashSelectAction) handleNewSizeLog(newSizeLog int, callback func(), redoCallback func()) {
+func (h *hashSelectAction) handleNewSizeLog(newSizeLogValue int, callback func(), redoCallback func()) {
 	oldSizeLog := h.sizeLog
+	newSizeLog := sql.NullInt64{
+		Valid: true,
+		Int64: int64(newSizeLogValue),
+	}
 	h.sizeLog = newSizeLog
 
 	if oldSizeLog != newSizeLog {
-		h.root.mem.SetNum(h.root.namespace, uint64(newSizeLog))
+		h.root.mem.SetNum(h.root.namespace, uint64(newSizeLogValue))
 		redoCallback()
 	} else {
 		callback()
@@ -92,7 +101,7 @@ func (h *hashSelectAction) handleSizeLogFromDB(callback func(), redoCallback fun
 
 	h.root.pipeline.LeaseSet(
 		h.root.sizeLogKey,
-		[]byte(strconv.FormatUint(uint64(h.sizeLog), 10)),
+		[]byte(strconv.FormatUint(uint64(h.sizeLog.Int64), 10)),
 		h.sizeLogLeaseID, 0, // TODO Customize TTL
 	)
 }
@@ -205,7 +214,7 @@ func (h *hashSelectAction) handleBucketsWithOutput() ([]Entry, error) {
 }
 
 func (h *hashSelectAction) getBucketFromCacheClientForLeasing() {
-	key := computeBucketKey(h.root.namespace, h.sizeLog, h.hash)
+	key := computeBucketKey(h.root.namespace, int(h.sizeLog.Int64), h.hash)
 	h.bucketLeaseGet = h.root.pipeline.LeaseGet(key)
 	h.root.sess.addNextCall(func() {
 		h.handleGetBucketFromDB()
@@ -252,8 +261,8 @@ func (h *hashSelectAction) handleGetBucketFromDBWithError() error {
 
 	h.bucketLeaseID = bucketGetOutput.LeaseID
 
-	begin := startOfSlot(h.hash, h.sizeLog)
-	end := nextSlot(h.hash, h.sizeLog)
+	begin := startOfSlot(h.hash, int(h.sizeLog.Int64))
+	end := nextSlot(h.hash, int(h.sizeLog.Int64))
 	h.entriesDBFn = h.root.db.SelectEntries(h.ctx, begin, end)
 
 	h.root.sess.addNextCall(func() {
@@ -271,7 +280,7 @@ func (h *hashSelectAction) handleBucketDataFromDBWithOutput() ([]Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	key := computeBucketKey(h.root.namespace, h.sizeLog, h.hash)
+	key := computeBucketKey(h.root.namespace, int(h.sizeLog.Int64), h.hash)
 	h.root.pipeline.LeaseSet(key, marshalEntries(dbEntries), h.bucketLeaseID, 0) // TODO TTL
 	return dbEntries, nil
 }

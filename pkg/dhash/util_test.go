@@ -97,3 +97,11 @@ func TestStartOfSlot(t *testing.T) {
 	hash = startOfSlot(0xf2345678, 0)
 	assert.Equal(t, uint32(0), hash)
 }
+
+func TestComputeBudgetKey(t *testing.T) {
+	key := computeBucketKey("ns", 0, 0)
+	assert.Equal(t, "ns:0:00000000", key)
+
+	key = computeBucketKey("ns", 14, 0x1234abcd)
+	assert.Equal(t, "ns:14:12340000", key)
+}

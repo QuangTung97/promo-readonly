@@ -1,6 +1,9 @@
 package dhash
 
-import "context"
+import (
+	"context"
+	"database/sql"
+)
 
 type hashImpl struct {
 	sess *sessionImpl
@@ -25,7 +28,7 @@ func (h *hashImpl) SelectEntries(ctx context.Context, hash uint32) func() ([]Ent
 		action.handleMemSizeLogNotExisted()
 	} else {
 		sizeLog := int(sizeLogNum)
-		action.sizeLog = sizeLog
+		action.sizeLog = sql.NullInt64{Valid: true, Int64: int64(sizeLog)}
 
 		action.handleMemSizeLogExisted()
 	}

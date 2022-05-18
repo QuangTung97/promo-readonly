@@ -1,6 +1,6 @@
 package util
 
-import "github.com/spaolacci/murmur3"
+import "github.com/twmb/murmur3"
 
 // HashFunc ...
 func HashFunc(s string) uint32 {

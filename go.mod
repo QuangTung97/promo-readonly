@@ -17,7 +17,7 @@ require (
 	github.com/mgechev/revive v1.1.4
 	github.com/prometheus/client_golang v1.11.0
 	github.com/shopspring/decimal v1.3.1
-	github.com/spaolacci/murmur3 v0.0.0-20180118202830-f09979ecbc72
+	github.com/spaolacci/murmur3 v1.1.0
 	github.com/spf13/cobra v1.4.0
 	github.com/spf13/viper v1.7.0
 	github.com/stretchr/testify v1.7.1

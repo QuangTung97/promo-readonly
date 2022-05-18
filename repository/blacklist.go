@@ -5,15 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/QuangTung97/promo-readonly/model"
-	"github.com/QuangTung97/promo-readonly/pkg/dhash"
 	"strings"
 )
-
-// HashRange ...
-type HashRange struct {
-	Begin uint32
-	End   dhash.NullUint32
-}
 
 //go:generate moq -rm -out blacklist_mocks.go . Blacklist
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"github.com/QuangTung97/promo-readonly/model"
+	"github.com/QuangTung97/promo-readonly/pkg/dhash"
 	"github.com/QuangTung97/promo-readonly/pkg/integration"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -42,11 +43,22 @@ func newNullTime(s string) sql.NullTime {
 	}
 }
 
+func newNullUint32(v uint32) dhash.NullUint32 {
+	return dhash.NullUint32{
+		Valid: true,
+		Num:   v,
+	}
+}
+
 func TestBlacklist_Empty_Keys(t *testing.T) {
 	repo := NewBlacklist()
 	ctx := newContext()
 
 	customers, err := repo.GetBlacklistCustomers(ctx, nil)
+	assert.Equal(t, nil, err)
+	assert.Nil(t, customers)
+
+	customers, err = repo.SelectBlacklistCustomers(ctx, nil)
 	assert.Equal(t, nil, err)
 	assert.Nil(t, customers)
 
@@ -147,6 +159,33 @@ func TestBlacklist_Customers(t *testing.T) {
 	// Get Customers 3
 	//---------------------------------------
 	customers, err = repo.GetBlacklistCustomers(readCtx, keys)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, upsertCustomers, customers)
+
+	//---------------------------------------
+	// Select Hash Range
+	//---------------------------------------
+	customers, err = repo.SelectBlacklistCustomers(readCtx, []HashRange{
+		{
+			Begin: 3300,
+			End:   newNullUint32(4401),
+		},
+	})
+	assert.Equal(t, nil, err)
+	assert.Equal(t, upsertCustomers, customers)
+
+	//---------------------------------------
+	// Select Hash Range 2
+	//---------------------------------------
+	customers, err = repo.SelectBlacklistCustomers(readCtx, []HashRange{
+		{
+			Begin: 3300,
+			End:   newNullUint32(3301),
+		},
+		{
+			Begin: 4400,
+		},
+	})
 	assert.Equal(t, nil, err)
 	assert.Equal(t, upsertCustomers, customers)
 }
@@ -320,4 +359,59 @@ func TestBlacklist_Terminals(t *testing.T) {
 	terminals, err = repo.GetBlacklistTerminals(ctx, []BlacklistTerminalKey{key01, key02})
 	assert.Equal(t, nil, err)
 	assert.Equal(t, upsertTerminals, terminals)
+}
+
+func TestBlacklist_Config(t *testing.T) {
+	tc := newBlacklistTest()
+	tc.tc.Truncate("blacklist_config")
+
+	repo := NewBlacklist()
+
+	ctx := tc.provider.Readonly(newContext())
+
+	// Get Config
+	config, err := repo.GetConfig(ctx)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, model.BlacklistConfig{}, config)
+
+	// Insert
+	err = tc.provider.Transact(newContext(), func(ctx context.Context) error {
+		return repo.UpsertConfig(ctx, model.BlacklistConfig{
+			CustomerCount: 10,
+			MerchantCount: 11,
+			TerminalCount: 12,
+		})
+	})
+	assert.Equal(t, nil, err)
+
+	// Get Config
+	config, err = repo.GetConfig(ctx)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, model.BlacklistConfig{
+		ID:            1,
+		CustomerCount: 10,
+		MerchantCount: 11,
+		TerminalCount: 12,
+	}, config)
+
+	// Upsert
+	err = tc.provider.Transact(newContext(), func(ctx context.Context) error {
+		return repo.UpsertConfig(ctx, model.BlacklistConfig{
+			ID:            1,
+			CustomerCount: 20,
+			MerchantCount: 21,
+			TerminalCount: 22,
+		})
+	})
+	assert.Equal(t, nil, err)
+
+	// Get
+	config, err = repo.GetConfig(ctx)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, model.BlacklistConfig{
+		ID:            1,
+		CustomerCount: 20,
+		MerchantCount: 21,
+		TerminalCount: 22,
+	}, config)
 }

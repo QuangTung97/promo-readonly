@@ -1,6 +1,8 @@
 /.idea
 /bin
 /**/*_mocks_test.go
+/**/*_mocks.go
 /coverage.out
 /config.yml
 /config_test.yml
+/promopb

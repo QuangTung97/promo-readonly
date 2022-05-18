@@ -13,3 +13,5 @@ DROP TABLE `campaign`;
 DROP TABLE `blacklist_terminal`;
 DROP TABLE `blacklist_merchant`;
 DROP TABLE `blacklist_customer`;
+
+DROP TABLE `blacklist_config`;

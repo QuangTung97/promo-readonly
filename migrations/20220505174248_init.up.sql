@@ -1,3 +1,15 @@
+CREATE TABLE `blacklist_config`
+(
+    `id`             INT UNSIGNED PRIMARY KEY,
+
+    `customer_count` INT UNSIGNED NOT NULL,
+    `merchant_count` INT UNSIGNED NOT NULL,
+    `terminal_count` INT UNSIGNED NOT NULL,
+
+    `created_at`     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at`     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
 CREATE TABLE `blacklist_customer`
 (
     `hash`       INT UNSIGNED NOT NULL,

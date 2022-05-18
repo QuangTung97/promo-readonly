@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package qrsearch.v1;
+
+option go_package = "github.com/QuangTung97/promo-readonly/promopb;promopb";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
+
+// BlacklistCustomerData ...
+message BlacklistCustomerData {
+  uint32 hash = 1;
+}
+

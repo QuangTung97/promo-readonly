@@ -36,6 +36,8 @@ jobs:
         run: make install-tools
       - name: Go Generate
         run: go generate ./...
+      - name: Generate Protobuf
+        run: make generate
       - name: Lint
         run: make lint
       - name: Set up integration test

@@ -13,6 +13,8 @@ type hashTest struct {
 	pipe  *CachePipelineMock
 	hash  Hash
 	timer *timerMock
+
+	leaseGetTimes []time.Time
 }
 
 type timerMock struct {
@@ -141,6 +143,9 @@ func (h *hashTest) stubLeaseGetOK(data string) {
 
 func (h *hashTest) stubLeaseGetOutputs(outputs []LeaseGetOutput) {
 	h.pipe.LeaseGetFunc = func(key string) func() (LeaseGetOutput, error) {
+		now := h.timer.Now()
+		h.leaseGetTimes = append(h.leaseGetTimes, now)
+
 		index := len(h.pipe.LeaseGetCalls()) - 1
 		return func() (LeaseGetOutput, error) {
 			return outputs[index], nil
@@ -391,12 +396,20 @@ func TestSelectEntries__When_Client_Get_Size_Log_Reject__Do_Retries(t *testing.T
 
 	h.stubDBGetSizeLog(5)
 
+	start := h.timer.Now()
+
 	_, _ = h.hash.SelectEntries(newContext(), 0xfc345678)()
 	assert.Equal(t, 3, len(h.pipe.LeaseGetCalls()))
 	assert.Equal(t, []time.Duration{
 		10 * time.Millisecond,
 		20 * time.Millisecond,
 	}, h.timer.sleepCalls)
+
+	assert.Equal(t, []time.Time{
+		start,
+		start.Add(10 * time.Millisecond),
+		start.Add(30 * time.Millisecond),
+	}, h.leaseGetTimes)
 }
 
 func TestSelectEntries__When_Client_Get_Size_Log_Reject__Retries_All_Times(t *testing.T) {
@@ -692,4 +705,49 @@ func TestSelectEntries__When_Both_Bucket_Not_Found__Client_Lease_Get_OK__Returns
 	}, h.timer.sleepCalls)
 
 	assert.Equal(t, 0, len(h.db.SelectEntriesCalls()))
+}
+
+func TestSelectEntries__When_Request_Size_Log_Duplicated__And_Client_Size_Log_Granted(t *testing.T) {
+	h := newHashTest("sample")
+
+	h.stubGetNum(5)
+	h.stubLeaseGetOutputs([]LeaseGetOutput{
+		newLeaseGetGranted(7788),
+	})
+	h.stubClientGet([][]Entry{
+		{newEntry(0xdc345678, 1, 2, 3)},
+		{newEntry(0xdc345678, 8, 8, 8)},
+	})
+
+	h.stubDBGetSizeLog(5)
+
+	fn1 := h.hash.SelectEntries(newContext(), 0xdc345678)
+	fn2 := h.hash.SelectEntries(newContext(), 0xdc345678)
+
+	entries, err := fn1()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, []Entry{
+		{
+			Hash: 0xdc345678,
+			Data: []byte{8, 8, 8},
+		},
+	}, entries)
+
+	entries, err = fn2()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, []Entry{
+		{
+			Hash: 0xdc345678,
+			Data: []byte{8, 8, 8},
+		},
+	}, entries)
+
+	assert.Equal(t, 1, len(h.pipe.LeaseGetCalls()))
+	assert.Equal(t, "sample:size-log", h.pipe.LeaseGetCalls()[0].Key)
+	assert.Equal(t, 2, len(h.db.GetSizeLogCalls()))
+
+	assert.Equal(t, 1, len(h.pipe.LeaseSetCalls()))
+	assert.Equal(t, "sample:size-log", h.pipe.LeaseSetCalls()[0].Key)
+	assert.Equal(t, []byte("5"), h.pipe.LeaseSetCalls()[0].Value)
+	assert.Equal(t, uint64(7788), h.pipe.LeaseSetCalls()[0].LeaseID)
 }

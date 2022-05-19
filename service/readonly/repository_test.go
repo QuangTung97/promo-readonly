@@ -122,6 +122,8 @@ func TestRepository_GetBlacklistCustomer__Found(t *testing.T) {
 
 	start := time.Now()
 	fn1 := r.repo.GetBlacklistCustomer(ctx, "0987000111")
+	fn2 := r.repo.GetBlacklistCustomer(ctx, "0987000222")
+
 	customer1, err := fn1()
 	assert.Equal(t, nil, err)
 	assert.Equal(t, model.NullBlacklistCustomer{
@@ -134,6 +136,11 @@ func TestRepository_GetBlacklistCustomer__Found(t *testing.T) {
 			EndTime:   newNullTime("2022-05-18T10:00:00+07:00"),
 		},
 	}, customer1)
+
+	customer2, err := fn2()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, model.NullBlacklistCustomer{}, customer2)
+
 	fmt.Println("First Get:", time.Since(start))
 
 	// Get Second Times

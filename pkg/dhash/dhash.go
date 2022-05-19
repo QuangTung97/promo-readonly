@@ -150,7 +150,7 @@ type sessionImpl struct {
 	options sessionOptions
 
 	mem      MemTable
-	pipeline CachePipeline
+	pipeline *deduplicatedPipeline
 	timer    delayTimer
 
 	nextCalls []func()
@@ -171,6 +171,8 @@ func (s *sessionImpl) addDelayedCall(d time.Duration, call func()) {
 func (s *sessionImpl) processAllCalls() {
 	for {
 		for len(s.nextCalls) > 0 {
+			s.pipeline.reset()
+
 			nextCalls := s.nextCalls
 			s.nextCalls = nil
 
@@ -189,6 +191,7 @@ func (s *sessionImpl) processAllCalls() {
 		sleepDuration := top.startedAt.Sub(now)
 		s.timer.Sleep(sleepDuration)
 
+		s.pipeline.reset()
 		top.call()
 
 		now = s.timer.Now().Add(200 * time.Microsecond) // earlier about 200 microseconds
@@ -206,7 +209,7 @@ func (p *providerImpl) NewSession(options ...SessionOption) Session {
 	return &sessionImpl{
 		options:  newSessionOptions(options...),
 		mem:      p.mem,
-		pipeline: p.client.Pipeline(),
+		pipeline: newDeduplicatedPipeline(p.client.Pipeline()),
 		timer:    p.timer,
 	}
 }

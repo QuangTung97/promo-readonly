@@ -139,9 +139,11 @@ func (h *hashSelectAction) handleSizeLogFromClientWithError(callback func(), red
 		duration := h.sizeLogWaitLeaseDurations[0]
 		h.sizeLogWaitLeaseDurations = h.sizeLogWaitLeaseDurations[1:]
 
-		h.sizeLogFn = h.root.pipeline.LeaseGet(h.root.sizeLogKey)
 		h.root.sess.addDelayedCall(duration, func() {
-			h.handleSizeLogFromClient(callback, redoCallback)
+			h.getSizeLogFromClient()
+			h.root.sess.addNextCall(func() {
+				h.handleSizeLogFromClient(callback, redoCallback)
+			})
 		})
 		return nil
 	}

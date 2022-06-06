@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+//go:generate otelwrap --out service_wrappers.go . IService
+
 // IService ...
 type IService interface {
 	Check(ctx context.Context, inputs []Input) []Output

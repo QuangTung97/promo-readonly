@@ -6,6 +6,7 @@ import (
 	"github.com/QuangTung97/promo-readonly/pkg/dhash"
 	"github.com/QuangTung97/promo-readonly/promopb"
 	"github.com/QuangTung97/promo-readonly/repository"
+	"go.opentelemetry.io/otel"
 )
 
 // Server ...
@@ -19,7 +20,8 @@ func NewServer(provider repository.Provider, dhashProvider dhash.Provider) *Serv
 	blacklistRepo := repository.NewBlacklist()
 	s := NewService(provider, blacklistRepo, dhashProvider)
 	return &Server{
-		service: s,
+		service: NewIServiceWrapper(s,
+			otel.GetTracerProvider().Tracer("server"), "service::"),
 	}
 }
 

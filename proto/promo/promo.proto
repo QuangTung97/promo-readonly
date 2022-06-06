@@ -15,3 +15,12 @@ message BlacklistCustomerData {
   google.protobuf.Timestamp end_time = 5;
 }
 
+// BlacklistMerchantData ...
+message BlacklistMerchantData {
+  uint32 hash = 1;
+  string merchant_code = 2;
+  uint32 status = 3;
+  google.protobuf.Timestamp start_time = 4;
+  google.protobuf.Timestamp end_time = 5;
+}
+

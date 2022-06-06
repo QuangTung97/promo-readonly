@@ -20,6 +20,7 @@ type Blacklist interface {
 	UpsertBlacklistCustomers(ctx context.Context, customers []model.BlacklistCustomer) error
 
 	GetBlacklistMerchants(ctx context.Context, keys []BlacklistMerchantKey) ([]model.BlacklistMerchant, error)
+	SelectBlacklistMerchants(ctx context.Context, ranges []HashRange) ([]model.BlacklistMerchant, error)
 	UpsertBlacklistMerchants(ctx context.Context, merchants []model.BlacklistMerchant) error
 
 	GetBlacklistTerminals(ctx context.Context, keys []BlacklistTerminalKey) ([]model.BlacklistTerminal, error)
@@ -201,6 +202,44 @@ FROM blacklist_merchant WHERE (hash, merchant_code) IN (%s)
 
 	var result []model.BlacklistMerchant
 	err := GetReadonly(ctx).SelectContext(ctx, &result, query, args...)
+	return result, err
+}
+
+// SelectBlacklistMerchants ...
+func (b *blacklistRepo) SelectBlacklistMerchants(
+	ctx context.Context, ranges []HashRange,
+) ([]model.BlacklistMerchant, error) {
+	if len(ranges) == 0 {
+		return nil, nil
+	}
+
+	var buf strings.Builder
+	query := `
+SELECT hash, merchant_code, status, start_time, end_time
+FROM blacklist_merchant WHERE hash >= ?%s
+`
+
+	withEndQuery := fmt.Sprintf(query, " AND hash < ?")
+	noEndQuery := fmt.Sprintf(query, "")
+
+	args := make([]interface{}, 0, 2*len(ranges))
+
+	for i, r := range ranges {
+		if i > 0 {
+			buf.WriteString("UNION ALL")
+		}
+		args = append(args, r.Begin)
+
+		if r.End.Valid {
+			buf.WriteString(withEndQuery)
+			args = append(args, r.End.Num)
+		} else {
+			buf.WriteString(noEndQuery)
+		}
+	}
+
+	var result []model.BlacklistMerchant
+	err := GetReadonly(ctx).SelectContext(ctx, &result, buf.String(), args...)
 	return result, err
 }
 

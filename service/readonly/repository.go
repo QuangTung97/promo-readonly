@@ -12,6 +12,7 @@ import (
 // IRepository ...
 type IRepository interface {
 	GetBlacklistCustomer(ctx context.Context, phone string) func() (model.NullBlacklistCustomer, error)
+	GetBlacklistMerchant(ctx context.Context, merchantCode string) func() (model.NullBlacklistMerchant, error)
 	// GetCampaigns(ctx context.Context, voucherCode string) func() ([]model.Campaign, error)
 }
 
@@ -67,5 +68,38 @@ func (r *repositoryImpl) GetBlacklistCustomer(
 			}, nil
 		}
 		return model.NullBlacklistCustomer{}, nil
+	}
+}
+
+// GetBlacklistMerchant ...
+func (r *repositoryImpl) GetBlacklistMerchant(
+	ctx context.Context, merchantCode string,
+) func() (model.NullBlacklistMerchant, error) {
+	hashValue := util.HashFunc(merchantCode)
+	hash := r.sess.NewHash("bl:mc", newBlacklistMerchantHashDB(r.blacklistRepo))
+	fn := hash.SelectEntries(ctx, hashValue)
+	return func() (model.NullBlacklistMerchant, error) {
+		entries, err := fn()
+		if err != nil {
+			return model.NullBlacklistMerchant{}, err
+		}
+		for _, entry := range entries {
+			if entry.Hash != hashValue {
+				continue
+			}
+
+			merchant, err := unmarshalBlacklistMerchant(entry.Data)
+			if err != nil {
+				return model.NullBlacklistMerchant{}, err
+			}
+			if merchant.MerchantCode != merchantCode {
+				continue
+			}
+			return model.NullBlacklistMerchant{
+				Valid:    true,
+				Merchant: merchant,
+			}, nil
+		}
+		return model.NullBlacklistMerchant{}, nil
 	}
 }

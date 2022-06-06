@@ -17,6 +17,12 @@ type BlacklistMerchant struct {
 	UpdatedAt time.Time `db:"updated_at"`
 }
 
+// NullBlacklistMerchant ...
+type NullBlacklistMerchant struct {
+	Valid    bool
+	Merchant BlacklistMerchant
+}
+
 // BlacklistMerchantStatus ...
 type BlacklistMerchantStatus int
 

@@ -17,8 +17,9 @@ type IRepository interface {
 }
 
 type repositoryImpl struct {
-	sess          dhash.Session
-	blacklistRepo repository.Blacklist
+	sess                  dhash.Session
+	blacklistCustomerHash dhash.Hash
+	blacklistMerchantHash dhash.Hash
 }
 
 var _ IRepository = &repositoryImpl{}
@@ -26,8 +27,10 @@ var _ IRepository = &repositoryImpl{}
 // NewRepository ...
 func NewRepository(sess dhash.Session, blacklistRepo repository.Blacklist) IRepository {
 	return &repositoryImpl{
-		sess:          sess,
-		blacklistRepo: blacklistRepo,
+		sess: sess,
+
+		blacklistCustomerHash: sess.NewHash("bl:cst", newBlacklistCustomerHashDB(blacklistRepo)),
+		blacklistMerchantHash: sess.NewHash("bl:mc", newBlacklistMerchantHashDB(blacklistRepo)),
 	}
 }
 
@@ -43,8 +46,7 @@ func (r *repositoryImpl) GetBlacklistCustomer(
 	ctx context.Context, phone string,
 ) func() (model.NullBlacklistCustomer, error) {
 	hashValue := util.HashFunc(phone)
-	hash := r.sess.NewHash("bl:cst", newBlacklistCustomerHashDB(r.blacklistRepo))
-	fn := hash.SelectEntries(ctx, hashValue)
+	fn := r.blacklistCustomerHash.SelectEntries(ctx, hashValue)
 	return func() (model.NullBlacklistCustomer, error) {
 		entries, err := fn()
 		if err != nil {
@@ -76,8 +78,7 @@ func (r *repositoryImpl) GetBlacklistMerchant(
 	ctx context.Context, merchantCode string,
 ) func() (model.NullBlacklistMerchant, error) {
 	hashValue := util.HashFunc(merchantCode)
-	hash := r.sess.NewHash("bl:mc", newBlacklistMerchantHashDB(r.blacklistRepo))
-	fn := hash.SelectEntries(ctx, hashValue)
+	fn := r.blacklistMerchantHash.SelectEntries(ctx, hashValue)
 	return func() (model.NullBlacklistMerchant, error) {
 		entries, err := fn()
 		if err != nil {

@@ -41,13 +41,15 @@ func (s *Server) Check(
 	}
 
 	outputs := s.service.Check(ctx, inputs)
-	fmt.Println(outputs)
+	// fmt.Println(outputs)
 
 	respOutputs := make([]*promopb.PromoServiceCheckOutput, 0, len(outputs))
 	for index, o := range outputs {
 		status := int32(1)
 		if o.Err != nil {
-			fmt.Println(index, o.Err)
+			if o.Err != ErrCustomerInBlacklist && o.Err != ErrMerchantInBlacklist {
+				fmt.Println(index, o.Err)
+			}
 			status = 2
 		}
 

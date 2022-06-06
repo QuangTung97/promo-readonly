@@ -4,10 +4,19 @@ import (
 	"context"
 	"fmt"
 	"github.com/QuangTung97/promo-readonly/config"
+	"github.com/QuangTung97/promo-readonly/model"
+	"github.com/QuangTung97/promo-readonly/pkg/cacheclient"
+	"github.com/QuangTung97/promo-readonly/pkg/dhash"
 	"github.com/QuangTung97/promo-readonly/pkg/grpclib"
+	"github.com/QuangTung97/promo-readonly/pkg/memtable"
 	"github.com/QuangTung97/promo-readonly/pkg/otellib"
+	"github.com/QuangTung97/promo-readonly/pkg/util"
+	"github.com/QuangTung97/promo-readonly/promopb"
+	"github.com/QuangTung97/promo-readonly/repository"
+	"github.com/QuangTung97/promo-readonly/service/readonly"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
+	"google.golang.org/grpc/credentials/insecure"
 	"net"
 	"net/http"
 	"os"
@@ -29,13 +38,14 @@ import (
 
 //revive:disable-next-line:unused-parameter
 func registerGRPCGateway(ctx context.Context, mux *runtime.ServeMux, endpoint string, opts []grpc.DialOption) {
+	_ = promopb.RegisterPromoServiceHandlerFromEndpoint(ctx, mux, endpoint, opts)
 }
 
 func startServer() {
 	conf := config.Load()
 	logger := config.NewLogger(conf.Log)
 
-	tracerProvider, shutdown := otellib.InitOtel("qrsearch-api", "local", conf.Jaeger)
+	tracerProvider, shutdown := otellib.InitOtel("promo-api", "local", conf.Jaeger)
 	defer shutdown()
 
 	otel.SetTracerProvider(tracerProvider)
@@ -63,7 +73,15 @@ func startServer() {
 		),
 	)
 
-	// db := conf.MySQL.MustConnect()
+	memTable := memtable.New(16 * 1024 * 1024)
+	client := cacheclient.New("localhost:11211", 4)
+
+	db := conf.MySQL.MustConnect()
+	provider := repository.NewProvider(db)
+	dhashProvider := dhash.NewProvider(memTable, client)
+
+	promoServer := readonly.NewServer(provider, dhashProvider)
+	promopb.RegisterPromoServiceServer(grpcServer, promoServer)
 
 	grpc_prometheus.EnableHandlingTimeHistogram()
 	grpc_prometheus.Register(grpcServer)
@@ -77,6 +95,7 @@ func main() {
 	}
 	rootCmd.AddCommand(
 		startServerCommand(),
+		migrateDataCommand(),
 	)
 
 	err := rootCmd.Execute()
@@ -110,7 +129,7 @@ func startHTTPAndGRPCServers(conf config.Config, grpcServer *grpc.Server) {
 	ctx := context.Background()
 	grpcHost := conf.Server.GRPC.String()
 	opts := []grpc.DialOption{
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	}
 	registerGRPCGateway(ctx, mux, grpcHost, opts)
 
@@ -169,4 +188,55 @@ func startHTTPAndGRPCServers(conf config.Config, grpcServer *grpc.Server) {
 	}
 
 	wg.Wait()
+}
+
+func migrateDataCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "migrate",
+		Short: "migrate data",
+		Run: func(cmd *cobra.Command, args []string) {
+			conf := config.Load()
+			db := conf.MySQL.MustConnect()
+
+			provider := repository.NewProvider(db)
+			repo := repository.NewBlacklist()
+			err := provider.Transact(context.Background(), func(ctx context.Context) error {
+				err := repo.UpsertConfig(ctx, model.BlacklistConfig{
+					CustomerCount: 1,
+					MerchantCount: 1,
+					TerminalCount: 0,
+				})
+				if err != nil {
+					return err
+				}
+
+				err = repo.UpsertBlacklistMerchants(ctx, []model.BlacklistMerchant{
+					{
+						Hash:         util.HashFunc("MERCHANT01"),
+						MerchantCode: "MERCHANT01",
+						Status:       model.BlacklistMerchantStatusActive,
+					},
+				})
+				if err != nil {
+					return err
+				}
+
+				err = repo.UpsertBlacklistCustomers(ctx, []model.BlacklistCustomer{
+					{
+						Hash:   util.HashFunc("0987000111"),
+						Phone:  "0987000111",
+						Status: model.BlacklistCustomerStatusActive,
+					},
+				})
+				if err != nil {
+					return err
+				}
+
+				return nil
+			})
+			if err != nil {
+				panic(err)
+			}
+		},
+	}
 }

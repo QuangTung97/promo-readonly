@@ -9,6 +9,7 @@ import (
 )
 
 //go:generate moq -rm -out blacklist_mocks.go . Blacklist
+//go:generate otelwrap --out blacklist_wrappers.go . Blacklist
 
 // Blacklist ...
 type Blacklist interface {
@@ -122,6 +123,8 @@ FROM blacklist_customer WHERE (hash, phone) IN (%s)
 func (b *blacklistRepo) SelectBlacklistCustomers(
 	ctx context.Context, ranges []HashRange,
 ) ([]model.BlacklistCustomer, error) {
+	fmt.Println("SELECT CUSTOMERS", ranges)
+
 	if len(ranges) == 0 {
 		return nil, nil
 	}

@@ -59,6 +59,7 @@ type CachePipeline interface {
 	LeaseGet(key string) func() (LeaseGetOutput, error)
 	LeaseSet(key string, value []byte, leaseID uint64, ttl uint32) func() error
 	Delete(key string) func() error
+	Finish()
 }
 
 // Entry for single hash value entry
@@ -93,6 +94,7 @@ type Provider interface {
 type Session interface {
 	NewHash(namespace string, db HashDatabase) Hash
 	NewStore(fn StoreDatabase) Store
+	Finish()
 }
 
 // ErrLeaseNotGranted after multiple retries configured by WithWaitLeaseDurations
@@ -234,4 +236,9 @@ func (s *sessionImpl) NewStore(db StoreDatabase) Store {
 		db:       db,
 		pipeline: s.pipeline,
 	}
+}
+
+// Finish ...
+func (s *sessionImpl) Finish() {
+	s.pipeline.Finish()
 }

@@ -117,3 +117,8 @@ func (p Pipeline) Delete(key string) func() error {
 		return err
 	}
 }
+
+// Finish ...
+func (p Pipeline) Finish() {
+	p.pipe.Finish()
+}

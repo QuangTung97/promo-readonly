@@ -1,9 +1,10 @@
 syntax = "proto3";
 
-package qrsearch.v1;
+package promo.v1;
 
 option go_package = "github.com/QuangTung97/promo-readonly/promopb;promopb";
 
+import "google/api/annotations.proto";
 import "google/protobuf/timestamp.proto";
 
 // BlacklistCustomerData ...
@@ -24,3 +25,37 @@ message BlacklistMerchantData {
   google.protobuf.Timestamp end_time = 5;
 }
 
+// PromoService ...
+service PromoService {
+  rpc Check(PromoServiceCheckRequest) returns (PromoServiceCheckResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/check"
+      body: "*"
+    };
+  }
+}
+
+// PromoServiceCheckRequest ...
+message PromoServiceCheckRequest {
+  repeated PromoServiceCheckInput inputs = 1;
+  google.protobuf.Timestamp req_time = 2;
+}
+
+// PromoServiceCheckInput ...
+message PromoServiceCheckInput {
+  string voucher_code = 1;
+  string merchant_code = 2;
+  string terminal_code = 3;
+  string phone = 4;
+}
+
+// PromoServiceCheckOutput ...
+message PromoServiceCheckOutput {
+  double discount_amount = 1;
+  int32 status = 2;
+}
+
+// PromoServiceCheckResponse ...
+message PromoServiceCheckResponse {
+  repeated PromoServiceCheckOutput outputs = 1;
+}

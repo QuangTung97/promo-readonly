@@ -1,4 +1,4 @@
-.PHONY: run lint install-tools test test-race benchmark migrate-up migrate-down-1 generate
+.PHONY: run lint install-tools test test-race benchmark migrate-up migrate-down-1 generate build
 
 run:
 	go run cmd/server/main.go start
@@ -33,3 +33,7 @@ migrate-down-1:
 
 generate:
 	./generate.sh
+
+build:
+	go build -o bin/migrate cmd/migrate/main.go
+	go build -o bin/bench cmd/bench/main.go

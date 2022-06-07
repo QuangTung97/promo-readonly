@@ -30,10 +30,11 @@ type ServerConfig struct {
 
 // Config for app configuration
 type Config struct {
-	Server ServerConfig `mapstructure:"server"`
-	Log    LogConfig    `mapstructure:"log"`
-	MySQL  MySQLConfig  `mapstructure:"mysql"`
-	Jaeger JaegerConfig `mapstructure:"jaeger"`
+	Server   ServerConfig   `mapstructure:"server"`
+	Log      LogConfig      `mapstructure:"log"`
+	MySQL    MySQLConfig    `mapstructure:"mysql"`
+	Memcache MemcacheConfig `mapstructure:"memcache"`
+	Jaeger   JaegerConfig   `mapstructure:"jaeger"`
 
 	DBOnly bool `mapstructure:"dbonly"`
 }

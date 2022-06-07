@@ -23,6 +23,11 @@ mysql:
     - key: 'parseTime'
       value: 'true'
 
+memcache:
+  host: localhost
+  port: 11211
+  num_conns: 1
+
 jaeger:
   host: localhost
   port: 6831

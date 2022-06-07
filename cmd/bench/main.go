@@ -39,12 +39,17 @@ func benchWithMemcached() {
 	conf := config.Load()
 	fmt.Println("DBONLY:", conf.DBOnly)
 
-	const numConns = 1
+	numConns := 1
+	if conf.Memcache.NumConns > 0 {
+		numConns = conf.Memcache.NumConns
+	}
 	fmt.Println("NUM CONNS:", numConns)
+
+	fmt.Println("MEMCACHE ADDR:", conf.Memcache.Addr())
 
 	db := conf.MySQL.MustConnect()
 	provider := repository.NewProvider(db)
-	client := cacheclient.New("localhost:11211", numConns)
+	client := cacheclient.New(conf.Memcache.Addr(), numConns)
 	memTable := memtable.New(8 * 1024 * 1024)
 	dhashProvider := dhash.NewProvider(memTable, client)
 

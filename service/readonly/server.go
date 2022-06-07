@@ -16,9 +16,23 @@ type Server struct {
 }
 
 // NewServer ...
-func NewServer(provider repository.Provider, dhashProvider dhash.Provider) *Server {
-	blacklistRepo := repository.NewBlacklist()
-	s := NewService(provider, blacklistRepo, dhashProvider)
+//revive:disable-next-line:flag-parameter
+func NewServer(provider repository.Provider, dhashProvider dhash.Provider, dbOnly bool) *Server {
+	blacklistRepo := repository.NewBlacklistWrapper(
+		repository.NewBlacklist(),
+		otel.GetTracerProvider().Tracer("server"),
+		"repo::",
+	)
+
+	var repoProvider IRepositoryProvider
+
+	if dbOnly {
+		repoProvider = NewDBRepoProvider(blacklistRepo)
+	} else {
+		repoProvider = NewRepositoryProvider(dhashProvider, blacklistRepo)
+	}
+
+	s := NewService(provider, repoProvider)
 	return &Server{
 		service: NewIServiceWrapper(s,
 			otel.GetTracerProvider().Tracer("server"), "service::"),

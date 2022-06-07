@@ -1,0 +1,90 @@
+---------------------------------------------
+WITH Memcached
+---------------------------------------------
+NUM CONNS: 1
+MaxOpenConns: 20
+MaxIdleConns: 20
+Options: parseTime=true
+TOTAL TIME 1.030568424s
+P50: 461.142µs
+P90: 712.415µs
+P95: 906.698µs
+P99: 1.644306ms
+P999: 3.066045ms
+MAX: 5.875298ms
+HISTORY LEN: 100000
+AVG: 0.00051
+---------------------------------------------
+NUM CONNS: 1
+MaxOpenConns: 20
+MaxIdleConns: 20
+Options: parseTime=true
+TOTAL TIME 1.068003305s
+P50: 472.542µs
+P90: 755.299µs
+P95: 984.418µs
+P99: 1.727257ms
+P999: 2.781551ms
+MAX: 6.506416ms
+HISTORY LEN: 100000
+AVG: 0.00053
+---------------------------------------------
+NUM CONNS: 1
+MaxOpenConns: 20
+MaxIdleConns: 20
+Options: parseTime=true
+TOTAL TIME 1.048289997s
+P50: 470.172µs
+P90: 727.23µs
+P95: 913.501µs
+P99: 1.664291ms
+P999: 2.506443ms
+MAX: 4.486851ms
+HISTORY LEN: 100000
+AVG: 0.00052
+---------------------------------------------
+DBONLY: false
+NUM CONNS: 1
+MaxOpenConns: 50
+MaxIdleConns: 50
+Options: parseTime=true
+TOTAL TIME 970.170148ms
+P50: 443.607µs
+P90: 639.508µs
+P95: 794.983µs
+P99: 1.501268ms
+P999: 2.195184ms
+MAX: 4.108332ms
+HISTORY LEN: 100000
+AVG: 0.00048
+
+---------------------------------------------
+Without Memcached
+---------------------------------------------
+NUM CONNS: 1
+MaxOpenConns: 20
+MaxIdleConns: 20
+Options: parseTime=true
+TOTAL TIME 11.503182118s
+P50: 4.377109ms
+P90: 9.820975ms
+P95: 13.195967ms
+P99: 24.950789ms
+P999: 46.276024ms
+MAX: 121.054121ms
+HISTORY LEN: 100000
+AVG: 0.00569
+---------------------------------------------
+NUM CONNS: 1
+MaxOpenConns: 50
+MaxIdleConns: 50
+Options: parseTime=true
+TOTAL TIME 9.94953864s
+P50: 4.827285ms
+P90: 6.197264ms
+P95: 6.735248ms
+P99: 8.23481ms
+P999: 14.899764ms
+MAX: 99.049771ms
+HISTORY LEN: 100000
+AVG: 0.00494

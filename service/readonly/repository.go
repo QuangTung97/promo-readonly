@@ -9,11 +9,53 @@ import (
 	"math/bits"
 )
 
+// IRepositoryProvider ...
+type IRepositoryProvider interface {
+	NewRepo() IRepository
+}
+
 // IRepository ...
 type IRepository interface {
 	GetBlacklistCustomer(ctx context.Context, phone string) func() (model.NullBlacklistCustomer, error)
 	GetBlacklistMerchant(ctx context.Context, merchantCode string) func() (model.NullBlacklistMerchant, error)
 	// GetCampaigns(ctx context.Context, voucherCode string) func() ([]model.Campaign, error)
+
+	Finish()
+}
+
+type repositoryProviderImpl struct {
+	dhashProvider dhash.Provider
+	blacklistRepo repository.Blacklist
+}
+
+var _ IRepositoryProvider = &repositoryProviderImpl{}
+
+// NewRepositoryProvider ...
+func NewRepositoryProvider(provider dhash.Provider, blacklistRepo repository.Blacklist) IRepositoryProvider {
+	return &repositoryProviderImpl{
+		dhashProvider: provider,
+		blacklistRepo: blacklistRepo,
+	}
+}
+
+// NewRepo ...
+func (p *repositoryProviderImpl) NewRepo() IRepository {
+	sess := p.dhashProvider.NewSession()
+	return newRepository(sess,
+		sess.NewHash("bl:cst", newBlacklistCustomerHashDB(p.blacklistRepo)),
+		sess.NewHash("bl:mc", newBlacklistMerchantHashDB(p.blacklistRepo)),
+	)
+}
+
+func newRepository(
+	sess dhash.Session, blacklistCustomerHash dhash.Hash, blacklistMerchantHash dhash.Hash,
+) IRepository {
+	return &repositoryImpl{
+		sess: sess,
+
+		blacklistCustomerHash: blacklistCustomerHash,
+		blacklistMerchantHash: blacklistMerchantHash,
+	}
 }
 
 type repositoryImpl struct {
@@ -23,16 +65,6 @@ type repositoryImpl struct {
 }
 
 var _ IRepository = &repositoryImpl{}
-
-// NewRepository ...
-func NewRepository(sess dhash.Session, blacklistRepo repository.Blacklist) IRepository {
-	return &repositoryImpl{
-		sess: sess,
-
-		blacklistCustomerHash: sess.NewHash("bl:cst", newBlacklistCustomerHashDB(blacklistRepo)),
-		blacklistMerchantHash: sess.NewHash("bl:mc", newBlacklistMerchantHashDB(blacklistRepo)),
-	}
-}
 
 func log2Int(n int64) uint64 {
 	if n == 0 {
@@ -103,4 +135,159 @@ func (r *repositoryImpl) GetBlacklistMerchant(
 		}
 		return model.NullBlacklistMerchant{}, nil
 	}
+}
+
+// Finish ...
+func (r *repositoryImpl) Finish() {
+	r.sess.Finish()
+}
+
+type dbRepoProviderImpl struct {
+	blacklistRepo repository.Blacklist
+}
+
+var _ IRepositoryProvider = &dbRepoProviderImpl{}
+
+// NewDBRepoProvider ...
+func NewDBRepoProvider(blacklistRepo repository.Blacklist) IRepositoryProvider {
+	return &dbRepoProviderImpl{
+		blacklistRepo: blacklistRepo,
+	}
+}
+
+// NewRepo ...
+func (p *dbRepoProviderImpl) NewRepo() IRepository {
+	return &dbRepoImpl{
+		blacklistRepo: p.blacklistRepo,
+
+		blacklistCustomerInputSet: map[string]struct{}{},
+		blacklistCustomerOutputs:  map[string]model.BlacklistCustomer{},
+
+		blacklistMerchantInputSet: map[string]struct{}{},
+		blacklistMerchantOutputs:  map[string]model.BlacklistMerchant{},
+	}
+}
+
+type dbRepoImpl struct {
+	blacklistRepo repository.Blacklist
+
+	fetchNew bool
+
+	blacklistCustomerInputs   []string
+	blacklistCustomerInputSet map[string]struct{}
+	blacklistCustomerOutputs  map[string]model.BlacklistCustomer
+
+	blacklistMerchantInputs   []string
+	blacklistMerchantInputSet map[string]struct{}
+	blacklistMerchantOutputs  map[string]model.BlacklistMerchant
+}
+
+var _ IRepository = &dbRepoImpl{}
+
+func (r *dbRepoImpl) fetchData(ctx context.Context) error {
+	if !r.fetchNew {
+		return nil
+	}
+	r.fetchNew = false
+
+	if len(r.blacklistCustomerInputs) > 0 {
+		inputs := r.blacklistCustomerInputs
+
+		keys := make([]repository.BlacklistCustomerKey, 0, len(inputs))
+		for _, phone := range inputs {
+			keys = append(keys, repository.BlacklistCustomerKey{
+				Hash:  util.HashFunc(phone),
+				Phone: phone,
+			})
+		}
+
+		customers, err := r.blacklistRepo.GetBlacklistCustomers(ctx, keys)
+		if err != nil {
+			return err
+		}
+
+		for _, c := range customers {
+			r.blacklistCustomerOutputs[c.Phone] = c
+		}
+	}
+
+	if len(r.blacklistMerchantInputs) > 0 {
+		inputs := r.blacklistMerchantInputs
+
+		keys := make([]repository.BlacklistMerchantKey, 0, len(inputs))
+		for _, code := range inputs {
+			keys = append(keys, repository.BlacklistMerchantKey{
+				Hash:         util.HashFunc(code),
+				MerchantCode: code,
+			})
+		}
+
+		merchants, err := r.blacklistRepo.GetBlacklistMerchants(ctx, keys)
+		if err != nil {
+			return err
+		}
+		for _, m := range merchants {
+			r.blacklistMerchantOutputs[m.MerchantCode] = m
+		}
+	}
+
+	return nil
+}
+
+// GetBlacklistCustomer ...
+func (r *dbRepoImpl) GetBlacklistCustomer(
+	ctx context.Context, phone string,
+) func() (model.NullBlacklistCustomer, error) {
+	r.fetchNew = true
+
+	if _, existed := r.blacklistCustomerInputSet[phone]; !existed {
+		r.blacklistCustomerInputSet[phone] = struct{}{}
+		r.blacklistCustomerInputs = append(r.blacklistCustomerInputs, phone)
+	}
+
+	return func() (model.NullBlacklistCustomer, error) {
+		if err := r.fetchData(ctx); err != nil {
+			return model.NullBlacklistCustomer{}, err
+		}
+
+		customer, existed := r.blacklistCustomerOutputs[phone]
+		if !existed {
+			return model.NullBlacklistCustomer{}, nil
+		}
+		return model.NullBlacklistCustomer{
+			Valid:    true,
+			Customer: customer,
+		}, nil
+	}
+}
+
+// GetBlacklistMerchant ...
+func (r *dbRepoImpl) GetBlacklistMerchant(
+	ctx context.Context, merchantCode string,
+) func() (model.NullBlacklistMerchant, error) {
+	r.fetchNew = true
+
+	if _, existed := r.blacklistMerchantInputSet[merchantCode]; !existed {
+		r.blacklistMerchantInputSet[merchantCode] = struct{}{}
+		r.blacklistMerchantInputs = append(r.blacklistMerchantInputs, merchantCode)
+	}
+
+	return func() (model.NullBlacklistMerchant, error) {
+		if err := r.fetchData(ctx); err != nil {
+			return model.NullBlacklistMerchant{}, err
+		}
+
+		merchant, existed := r.blacklistMerchantOutputs[merchantCode]
+		if !existed {
+			return model.NullBlacklistMerchant{}, nil
+		}
+		return model.NullBlacklistMerchant{
+			Valid:    true,
+			Merchant: merchant,
+		}, nil
+	}
+}
+
+// Finish ...
+func (r *dbRepoImpl) Finish() {
 }

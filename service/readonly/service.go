@@ -4,10 +4,8 @@ import (
 	"context"
 	"errors"
 	"github.com/QuangTung97/promo-readonly/model"
-	"github.com/QuangTung97/promo-readonly/pkg/dhash"
 	"github.com/QuangTung97/promo-readonly/repository"
 	"github.com/shopspring/decimal"
-	"go.opentelemetry.io/otel"
 	"time"
 )
 
@@ -37,9 +35,8 @@ type Output struct {
 
 // Service ...
 type Service struct {
-	provider      repository.Provider
-	blacklistRepo repository.Blacklist
-	dhashProvider dhash.Provider
+	provider     repository.Provider
+	repoProvider IRepositoryProvider
 }
 
 // ErrMerchantInBlacklist ...
@@ -50,12 +47,11 @@ var ErrCustomerInBlacklist = errors.New("customer in blacklist")
 
 // NewService ...
 func NewService(
-	provider repository.Provider, blacklistRepo repository.Blacklist, dhashProvider dhash.Provider,
+	provider repository.Provider, repoProvider IRepositoryProvider,
 ) *Service {
 	return &Service{
-		provider:      provider,
-		blacklistRepo: blacklistRepo,
-		dhashProvider: dhashProvider,
+		provider:     provider,
+		repoProvider: repoProvider,
 	}
 }
 
@@ -120,13 +116,8 @@ func (s *checkState) handleBlacklistCustomer() {
 // Check ...
 func (s *Service) Check(ctx context.Context, inputs []Input) []Output {
 	ctx = s.provider.Readonly(ctx)
-	sess := s.dhashProvider.NewSession()
-	defer sess.Finish()
-
-	repo := NewRepository(sess,
-		repository.NewBlacklistWrapper(s.blacklistRepo,
-			otel.GetTracerProvider().Tracer("readonly"), "repo::"),
-	)
+	repo := s.repoProvider.NewRepo()
+	defer repo.Finish()
 
 	states := make([]*checkState, 0, len(inputs))
 	for _, input := range inputs {

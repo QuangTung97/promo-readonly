@@ -37,6 +37,7 @@ func main() {
 
 func benchWithMemcached() {
 	conf := config.Load()
+	fmt.Println("DBONLY:", conf.DBOnly)
 
 	const numConns = 1
 	fmt.Println("NUM CONNS:", numConns)
@@ -47,12 +48,12 @@ func benchWithMemcached() {
 	memTable := memtable.New(8 * 1024 * 1024)
 	dhashProvider := dhash.NewProvider(memTable, client)
 
-	const numThreads = 500
+	const numThreads = 50
 	const numElements = 2000
 
 	durations := make([][]time.Duration, numThreads)
 
-	server := readonly.NewServer(provider, dhashProvider)
+	server := readonly.NewServer(provider, dhashProvider, conf.DBOnly)
 
 	totalStart := time.Now()
 

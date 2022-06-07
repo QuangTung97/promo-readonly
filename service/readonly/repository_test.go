@@ -74,19 +74,19 @@ func newRepoTest(tc *integration.TestCase) *repoTest {
 		panic(err)
 	}
 
-	repoProvider := repository.NewProvider(tc.DB)
+	txProvider := repository.NewProvider(tc.DB)
 
 	blacklistRepo := repository.NewBlacklist()
 
 	mem := memtable.New(100 * 1024)
 
-	provider := dhash.NewProvider(mem, client)
-	sess := provider.NewSession()
-	repo := NewRepository(sess, blacklistRepo)
+	dhashProvider := dhash.NewProvider(mem, client)
+	repoProvider := NewRepositoryProvider(dhashProvider, blacklistRepo)
+	repo := repoProvider.NewRepo()
 
 	return &repoTest{
 		client:    client,
-		provider:  repoProvider,
+		provider:  txProvider,
 		mem:       mem,
 		repo:      repo,
 		blacklist: blacklistRepo,

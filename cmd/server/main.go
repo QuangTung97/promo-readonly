@@ -80,7 +80,7 @@ func startServer() {
 	provider := repository.NewProvider(db)
 	dhashProvider := dhash.NewProvider(memTable, client)
 
-	promoServer := readonly.NewServer(provider, dhashProvider)
+	promoServer := readonly.NewServer(provider, dhashProvider, true)
 	promopb.RegisterPromoServiceServer(grpcServer, promoServer)
 
 	grpc_prometheus.EnableHandlingTimeHistogram()

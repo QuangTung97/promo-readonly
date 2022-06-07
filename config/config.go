@@ -34,6 +34,8 @@ type Config struct {
 	Log    LogConfig    `mapstructure:"log"`
 	MySQL  MySQLConfig  `mapstructure:"mysql"`
 	Jaeger JaegerConfig `mapstructure:"jaeger"`
+
+	DBOnly bool `mapstructure:"dbonly"`
 }
 
 // Load config from config.yml

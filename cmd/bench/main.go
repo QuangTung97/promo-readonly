@@ -59,7 +59,7 @@ func benchWithMemcached() {
 	dhashProvider := dhash.NewProvider(memTable, client)
 
 	const numThreads = 50
-	const numElements = 2000
+	const numElements = 10000
 
 	durations := make([][]time.Duration, numThreads)
 
@@ -124,6 +124,7 @@ func benchWithMemcached() {
 	p99Index := numHistory * 99 / 100
 	p999Index := numHistory * 999 / 1000
 
+	fmt.Println("FIRST:", history[0])
 	fmt.Println("P50:", history[p50Index])
 	fmt.Println("P90:", history[p90Index])
 	fmt.Println("P95:", history[p95Index])
@@ -159,7 +160,7 @@ func getMerchantCode(index int) string {
 }
 
 const batchSize = 1000
-const numBatch = 100
+const numBatch = 1000
 
 func migrateMerchants(ctx context.Context, repo repository.Blacklist) {
 	for i := 0; i < numBatch; i++ {

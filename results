@@ -88,3 +88,50 @@ P999: 14.899764ms
 MAX: 99.049771ms
 HISTORY LEN: 100000
 AVG: 0.00494
+
+
+/-------------------------------------------------------------
+1 million elements for customers and merchants
+/-------------------------------------------------------------
+DBONLY: false
+NUM CONNS: 8
+MEMCACHE ADDR: localhost:11211
+MaxOpenConns: 50
+MaxIdleConns: 50
+Options: parseTime=true
+TOTAL TIME 44.901041945s
+FIRST: 336.265µs
+P50: 3.888218ms
+P90: 8.232799ms
+P95: 10.02642ms
+P99: 14.426758ms
+P999: 20.731707ms
+MAX: 38.052529ms
+HISTORY LEN: 500000
+AVG: 0.00447
+QPS: 11135.599049404196
+ACCESS COUNT: 40998951
+MISS COUNT: 19999396
+MISS RATE: 48.78026269501383
+
+/-------------------------------------------------------------
+DBONLY: true
+NUM CONNS: 8
+MEMCACHE ADDR: localhost:11211
+MaxOpenConns: 50
+MaxIdleConns: 50
+Options: parseTime=true
+TOTAL TIME 3m55.703107436s
+FIRST: 1.319686ms
+P50: 21.471954ms
+P90: 40.585665ms
+P95: 47.247511ms
+P99: 62.043133ms
+P999: 89.480305ms
+MAX: 196.071868ms
+HISTORY LEN: 500000
+AVG: 0.023506
+QPS: 2121.312720222681
+ACCESS COUNT: 0
+MISS COUNT: 0
+MISS RATE: NaN

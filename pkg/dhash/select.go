@@ -37,6 +37,8 @@ type hashSelectAction struct {
 //revive:disable:get-return
 
 func (h *hashSelectAction) getSizeLogFromClient() {
+	h.root.sess.hashSizeLogAccessCount++
+
 	sizeLogFn := h.root.pipeline.LeaseGet(h.root.sizeLogKey)
 	h.sizeLogFn = sizeLogFn
 }
@@ -49,6 +51,9 @@ func (h *hashSelectAction) getBuckets() {
 	if !h.sizeLog.Valid {
 		panic("Must be valid")
 	}
+
+	h.root.sess.hashBucketAccessCount++
+
 	sizeLog := int(h.sizeLog.Int64)
 	key1 := computeBucketKey(h.root.namespace, sizeLog-1, h.hash) // TODO Size Log = 0, Should Not Negative
 	key2 := computeBucketKey(h.root.namespace, sizeLog, h.hash)
@@ -117,6 +122,8 @@ func (h *hashSelectAction) handleSizeLogFromClientWithError(callback func(), red
 	}
 
 	if newSizeLogOutput.Type == LeaseGetTypeGranted {
+		h.root.sess.hashSizeLogMissCount++
+
 		h.sizeLogDBFn = h.root.db.GetSizeLog(h.ctx)
 		h.sizeLogLeaseID = newSizeLogOutput.LeaseID
 		h.root.sess.addNextCall(func() {
@@ -126,6 +133,8 @@ func (h *hashSelectAction) handleSizeLogFromClientWithError(callback func(), red
 	}
 
 	if newSizeLogOutput.Type == LeaseGetTypeRejected {
+		h.root.sess.hashSizeLogMissCount++
+
 		sess := h.root.sess
 
 		if !h.sizeLogWaitLeaseStarted {
@@ -196,6 +205,8 @@ func (h *hashSelectAction) handleBucketsWithOutput() ([]Entry, error) {
 	}
 
 	if len(data) == 0 {
+		h.root.sess.hashBucketMissCount++
+
 		h.getBucketFromCacheClientForLeasing()
 		return nil, nil
 	}

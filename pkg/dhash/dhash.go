@@ -3,6 +3,7 @@ package dhash
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"time"
 )
 
@@ -124,8 +125,8 @@ func (t defaultDelayTimer) Sleep(d time.Duration) {
 	time.Sleep(d)
 }
 
-func newProviderImpl(mem MemTable, client CacheClient) *providerImpl {
-	return &providerImpl{
+func newProviderImpl(mem MemTable, client CacheClient) *ProviderImpl {
+	return &ProviderImpl{
 		mem:    mem,
 		client: client,
 		timer:  defaultDelayTimer{},
@@ -133,14 +134,44 @@ func newProviderImpl(mem MemTable, client CacheClient) *providerImpl {
 }
 
 // NewProvider ...
-func NewProvider(mem MemTable, client CacheClient) Provider {
+func NewProvider(mem MemTable, client CacheClient) *ProviderImpl {
 	return newProviderImpl(mem, client)
 }
 
-type providerImpl struct {
+// ProviderImpl ...
+type ProviderImpl struct {
 	mem    MemTable
 	client CacheClient
 	timer  delayTimer
+
+	hashSizeLogAccessCount uint64
+	hashBucketAccessCount  uint64
+
+	hashSizeLogMissCount uint64
+	hashBucketMissCount  uint64
+
+	storeAccessCount uint64
+	storeMissCount   uint64
+}
+
+// HashSizeLogAccessCount ...
+func (p *ProviderImpl) HashSizeLogAccessCount() uint64 {
+	return atomic.LoadUint64(&p.hashSizeLogAccessCount)
+}
+
+// HashBucketAccessCount ...
+func (p *ProviderImpl) HashBucketAccessCount() uint64 {
+	return atomic.LoadUint64(&p.hashBucketAccessCount)
+}
+
+// HashSizeLogMissCount ...
+func (p *ProviderImpl) HashSizeLogMissCount() uint64 {
+	return atomic.LoadUint64(&p.hashSizeLogMissCount)
+}
+
+// HashBucketMissCount ...
+func (p *ProviderImpl) HashBucketMissCount() uint64 {
+	return atomic.LoadUint64(&p.hashBucketMissCount)
 }
 
 type delayedCall struct {
@@ -149,6 +180,8 @@ type delayedCall struct {
 }
 
 type sessionImpl struct {
+	provider *ProviderImpl
+
 	options sessionOptions
 
 	mem      MemTable
@@ -157,6 +190,15 @@ type sessionImpl struct {
 
 	nextCalls []func()
 	delayed   delayedCallHeap
+
+	hashSizeLogAccessCount uint64
+	hashBucketAccessCount  uint64
+
+	hashSizeLogMissCount uint64
+	hashBucketMissCount  uint64
+
+	storeAccessCount uint64
+	storeMissCount   uint64
 }
 
 func (s *sessionImpl) addNextCall(fn func()) {
@@ -207,8 +249,9 @@ func (s *sessionImpl) processAllCalls() {
 }
 
 // NewSession ...
-func (p *providerImpl) NewSession(options ...SessionOption) Session {
+func (p *ProviderImpl) NewSession(options ...SessionOption) Session {
 	return &sessionImpl{
+		provider: p,
 		options:  newSessionOptions(options...),
 		mem:      p.mem,
 		pipeline: newDeduplicatedPipeline(p.client.Pipeline()),
@@ -240,5 +283,17 @@ func (s *sessionImpl) NewStore(db StoreDatabase) Store {
 
 // Finish ...
 func (s *sessionImpl) Finish() {
+	atomic.AddUint64(&s.provider.hashSizeLogAccessCount, s.hashSizeLogAccessCount)
+	s.hashSizeLogAccessCount = 0
+
+	atomic.AddUint64(&s.provider.hashBucketAccessCount, s.hashBucketAccessCount)
+	s.hashBucketAccessCount = 0
+
+	atomic.AddUint64(&s.provider.hashSizeLogMissCount, s.hashSizeLogMissCount)
+	s.hashSizeLogMissCount = 0
+
+	atomic.AddUint64(&s.provider.hashBucketMissCount, s.hashBucketMissCount)
+	s.hashBucketMissCount = 0
+
 	s.pipeline.Finish()
 }

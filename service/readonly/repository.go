@@ -7,6 +7,7 @@ import (
 	"github.com/QuangTung97/promo-readonly/pkg/util"
 	"github.com/QuangTung97/promo-readonly/repository"
 	"math/bits"
+	"time"
 )
 
 // IRepositoryProvider ...
@@ -40,7 +41,13 @@ func NewRepositoryProvider(provider dhash.Provider, blacklistRepo repository.Bla
 
 // NewRepo ...
 func (p *repositoryProviderImpl) NewRepo() IRepository {
-	sess := p.dhashProvider.NewSession()
+	sess := p.dhashProvider.NewSession(dhash.WithWaitLeaseDurations([]time.Duration{
+		4 * time.Millisecond,
+		10 * time.Millisecond,
+		20 * time.Millisecond,
+		50 * time.Millisecond,
+	}))
+
 	return newRepository(sess,
 		sess.NewHash("bl:cst", newBlacklistCustomerHashDB(p.blacklistRepo)),
 		sess.NewHash("bl:mc", newBlacklistMerchantHashDB(p.blacklistRepo)),

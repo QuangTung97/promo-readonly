@@ -37,3 +37,9 @@ generate:
 build:
 	go build -o bin/migrate cmd/migrate/main.go
 	go build -o bin/bench cmd/bench/main.go
+	mkdir -p bin/build
+	cp bin/migrate bin/build
+	cp bin/bench bin/build
+	cp -r migrations bin/build
+	cp -n config.yml bin/build/config.yml
+	cd bin && tar -czvf build.tar.gz build

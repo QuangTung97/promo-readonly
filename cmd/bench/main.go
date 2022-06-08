@@ -37,7 +37,7 @@ func main() {
 }
 
 func randInt() int {
-	return int(rand.Int63n(1000000))
+	return int(rand.Int63n(3000000))
 }
 
 func benchWithMemcached() {
@@ -139,6 +139,15 @@ func benchWithMemcached() {
 	fmt.Println("ACCESS COUNT:", client.AccessCount())
 	fmt.Println("MISS COUNT:", client.MissCount())
 	fmt.Println("MISS RATE:", float64(client.MissCount())/float64(client.AccessCount())*100)
+
+	fmt.Println("HASH SIZE LOG ACCESS COUNT:", dhashProvider.HashSizeLogAccessCount())
+	fmt.Println("HASH BUCKET ACCESS COUNT:", dhashProvider.HashBucketAccessCount())
+	fmt.Println("HASH SIZE LOG MISS COUNT:", dhashProvider.HashSizeLogMissCount())
+	fmt.Println("HASH BUCKET MISS COUNT:", dhashProvider.HashBucketMissCount())
+	fmt.Println("HASH SIZE LOG HIT RATE:",
+		float64(dhashProvider.HashSizeLogMissCount())/float64(dhashProvider.HashSizeLogAccessCount()))
+	fmt.Println("HASH BUCKET HIT RATE:",
+		float64(dhashProvider.HashBucketMissCount())/float64(dhashProvider.HashBucketAccessCount()))
 }
 
 func benchWithMemcachedCommand() *cobra.Command {

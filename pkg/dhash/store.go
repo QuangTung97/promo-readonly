@@ -36,6 +36,8 @@ func (s *storeGetAction) handleLeaseGetWithOutput() ([]byte, error) {
 	}
 
 	if output.Type == LeaseGetTypeGranted {
+		s.root.sess.storeMissCount++
+
 		dbFn := s.root.db.Get(s.ctx, s.key)
 		s.root.sess.addNextCall(func() {
 			dbData, err := dbFn()
@@ -51,6 +53,8 @@ func (s *storeGetAction) handleLeaseGetWithOutput() ([]byte, error) {
 	}
 
 	if output.Type == LeaseGetTypeRejected {
+		s.root.sess.storeMissCount++
+
 		sess := s.root.sess
 
 		if !s.leaseWaitStarted {
@@ -77,6 +81,8 @@ func (s *storeGetAction) handleLeaseGetWithOutput() ([]byte, error) {
 
 // Get ...
 func (s *storeImpl) Get(ctx context.Context, key string) func() ([]byte, error) {
+	s.sess.storeAccessCount++
+
 	fn := s.pipeline.LeaseGet(key)
 	action := &storeGetAction{
 		root:       s,

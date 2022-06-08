@@ -36,7 +36,9 @@ type Config struct {
 	Memcache MemcacheConfig `mapstructure:"memcache"`
 	Jaeger   JaegerConfig   `mapstructure:"jaeger"`
 
-	DBOnly bool `mapstructure:"dbonly"`
+	DBOnly      bool `mapstructure:"dbonly"`
+	NumThreads  int  `mapstructure:"num_threads"`
+	NumElements int  `mapstructure:"num_elements"`
 }
 
 // Load config from config.yml

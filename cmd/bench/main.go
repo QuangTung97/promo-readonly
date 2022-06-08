@@ -58,8 +58,18 @@ func benchWithMemcached() {
 	memTable := memtable.New(8 * 1024 * 1024)
 	dhashProvider := dhash.NewProvider(memTable, client)
 
-	const numThreads = 50
-	const numElements = 10000
+	numThreads := 50
+	numElements := 10000
+
+	if conf.NumThreads > 0 {
+		numThreads = conf.NumThreads
+	}
+	if conf.NumElements > 0 {
+		numElements = conf.NumElements
+	}
+
+	fmt.Println("NUM THREADS:", numThreads)
+	fmt.Println("NUM ELEMENTS:", numElements)
 
 	durations := make([][]time.Duration, numThreads)
 

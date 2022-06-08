@@ -13,6 +13,7 @@ import (
 	"github.com/QuangTung97/promo-readonly/repository"
 	"github.com/QuangTung97/promo-readonly/service/readonly"
 	"github.com/spf13/cobra"
+	"math/rand"
 	"sort"
 	"sync"
 	"time"
@@ -33,6 +34,10 @@ func main() {
 	if err != nil {
 		fmt.Println(err)
 	}
+}
+
+func randInt() int {
+	return int(rand.Int63n(1000000))
 }
 
 func benchWithMemcached() {
@@ -71,21 +76,20 @@ func benchWithMemcached() {
 
 			for i := 0; i < numElements; i++ {
 				start := time.Now()
+
+				const inputSize = 20
+				inputs := make([]*promopb.PromoServiceCheckInput, 0, inputSize)
+				for k := 0; k < inputSize; k++ {
+					inputs = append(inputs, &promopb.PromoServiceCheckInput{
+						VoucherCode:  "VOUCHER01",
+						MerchantCode: getMerchantCode(randInt()),
+						TerminalCode: "TERMINAL01",
+						Phone:        getPhone(randInt()),
+					})
+				}
+
 				resp, err := server.Check(context.Background(), &promopb.PromoServiceCheckRequest{
-					Inputs: []*promopb.PromoServiceCheckInput{
-						{
-							VoucherCode:  "VOUCHER01",
-							MerchantCode: "MERCHANT01",
-							TerminalCode: "TERMINAL01",
-							Phone:        "0987000111",
-						},
-						{
-							VoucherCode:  "VOUCHER02",
-							MerchantCode: "MERCHANT02",
-							TerminalCode: "TERMINAL01",
-							Phone:        "0987000222",
-						},
-					},
+					Inputs: inputs,
 				})
 				if err != nil {
 					fmt.Println(resp, err)
@@ -95,7 +99,8 @@ func benchWithMemcached() {
 		}()
 	}
 	wg.Wait()
-	fmt.Println("TOTAL TIME", time.Since(totalStart))
+	totalDuration := time.Since(totalStart)
+	fmt.Println("TOTAL TIME", totalDuration)
 
 	history := make([]time.Duration, 0, numThreads*numElements)
 
@@ -128,6 +133,11 @@ func benchWithMemcached() {
 	fmt.Println("HISTORY LEN:", len(history))
 
 	fmt.Println("AVG:", avg)
+	fmt.Println("QPS:", float64(numHistory)/totalDuration.Seconds())
+
+	fmt.Println("ACCESS COUNT:", client.AccessCount())
+	fmt.Println("MISS COUNT:", client.MissCount())
+	fmt.Println("MISS RATE:", float64(client.MissCount())/float64(client.AccessCount())*100)
 }
 
 func benchWithMemcachedCommand() *cobra.Command {
@@ -137,6 +147,53 @@ func benchWithMemcachedCommand() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			benchWithMemcached()
 		},
+	}
+}
+
+func getPhone(index int) string {
+	return fmt.Sprintf("0987%06d", index)
+}
+
+func getMerchantCode(index int) string {
+	return fmt.Sprintf("MERCHANT%06d", index)
+}
+
+const batchSize = 1000
+const numBatch = 100
+
+func migrateMerchants(ctx context.Context, repo repository.Blacklist) {
+	for i := 0; i < numBatch; i++ {
+		merchants := make([]model.BlacklistMerchant, 0, batchSize)
+		for k := 0; k < batchSize; k++ {
+			code := getMerchantCode(k + i*batchSize)
+			merchants = append(merchants, model.BlacklistMerchant{
+				Hash:         util.HashFunc(code),
+				MerchantCode: code,
+				Status:       model.BlacklistMerchantStatusActive,
+			})
+		}
+		err := repo.UpsertBlacklistMerchants(ctx, merchants)
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
+func migrateCustomers(ctx context.Context, repo repository.Blacklist) {
+	for i := 0; i < numBatch; i++ {
+		customers := make([]model.BlacklistCustomer, 0, batchSize)
+		for k := 0; k < batchSize; k++ {
+			phone := getPhone(k + i*batchSize)
+			customers = append(customers, model.BlacklistCustomer{
+				Hash:   util.HashFunc(phone),
+				Phone:  phone,
+				Status: model.BlacklistCustomerStatusActive,
+			})
+		}
+		err := repo.UpsertBlacklistCustomers(ctx, customers)
+		if err != nil {
+			panic(err)
+		}
 	}
 }
 
@@ -152,35 +209,16 @@ func migrateDataCommand() *cobra.Command {
 			repo := repository.NewBlacklist()
 			err := provider.Transact(context.Background(), func(ctx context.Context) error {
 				err := repo.UpsertConfig(ctx, model.BlacklistConfig{
-					CustomerCount: 1,
-					MerchantCount: 1,
+					CustomerCount: numBatch * batchSize,
+					MerchantCount: numBatch * batchSize,
 					TerminalCount: 0,
 				})
 				if err != nil {
 					return err
 				}
 
-				err = repo.UpsertBlacklistMerchants(ctx, []model.BlacklistMerchant{
-					{
-						Hash:         util.HashFunc("MERCHANT01"),
-						MerchantCode: "MERCHANT01",
-						Status:       model.BlacklistMerchantStatusActive,
-					},
-				})
-				if err != nil {
-					return err
-				}
-
-				err = repo.UpsertBlacklistCustomers(ctx, []model.BlacklistCustomer{
-					{
-						Hash:   util.HashFunc("0987000111"),
-						Phone:  "0987000111",
-						Status: model.BlacklistCustomerStatusActive,
-					},
-				})
-				if err != nil {
-					return err
-				}
+				migrateMerchants(ctx, repo)
+				migrateCustomers(ctx, repo)
 
 				return nil
 			})

@@ -109,8 +109,8 @@ github.com/PuerkitoBio/purell v1.0.0/go.mod h1:c11w/QuzBsJSee3cPx9rAFu61PvFxuPbt
 github.com/PuerkitoBio/purell v1.1.1/go.mod h1:c11w/QuzBsJSee3cPx9rAFu61PvFxuPbtSwDGJws/X0=
 github.com/PuerkitoBio/urlesc v0.0.0-20160726150825-5bd2802263f2/go.mod h1:uGdkoq3SwY9Y+13GIhn11/XLaGBb4BfwItxLd5jeuXE=
 github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578/go.mod h1:uGdkoq3SwY9Y+13GIhn11/XLaGBb4BfwItxLd5jeuXE=
-github.com/QuangTung97/go-memcache v0.3.0 h1:p2YtWF2GK1R0NbKKoaL1xLiUVr8gamGvf58I7U3EFn0=
-github.com/QuangTung97/go-memcache v0.3.0/go.mod h1:oXGLtsPm6a0rqaUt4wW4xSHhdL63nEbHkWJINmHVn5E=
+github.com/QuangTung97/go-memcache v0.3.2 h1:Q3ci8AJ7e5OqK8TFn63AGUAmDRL2mbVONB4b5qAwUMw=
+github.com/QuangTung97/go-memcache v0.3.2/go.mod h1:oXGLtsPm6a0rqaUt4wW4xSHhdL63nEbHkWJINmHVn5E=
 github.com/QuangTung97/otelwrap v0.3.1 h1:bIz5BziEtE5jTJYfqblHbqAyLbEolC0gs07iFGOx0Bc=
 github.com/QuangTung97/otelwrap v0.3.1/go.mod h1:UwsSKucVTCJ7LFAAaVDmY2IrgbwUqpdBt8XyoUDNZTc=
 github.com/Shopify/logrus-bugsnag v0.0.0-20171204204709-577dee27f20d/go.mod h1:HI8ITrYtUY+O+ZhtlqUnD8+KwNPOyugEhfP9fdUIaEQ=

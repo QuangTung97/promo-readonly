@@ -3,14 +3,10 @@ package readonly
 import (
 	"context"
 	"database/sql"
-	"fmt"
+	"errors"
 	"github.com/QuangTung97/promo-readonly/model"
-	"github.com/QuangTung97/promo-readonly/pkg/cacheclient"
 	"github.com/QuangTung97/promo-readonly/pkg/dhash"
-	"github.com/QuangTung97/promo-readonly/pkg/integration"
-	"github.com/QuangTung97/promo-readonly/pkg/memtable"
 	"github.com/QuangTung97/promo-readonly/pkg/util"
-	"github.com/QuangTung97/promo-readonly/repository"
 	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
@@ -57,218 +53,137 @@ func TestLog2Int(t *testing.T) {
 }
 
 type repoTest struct {
-	client    *cacheclient.Client
-	provider  repository.Provider
-	mem       *memtable.MemTable
-	repo      IRepository
-	blacklist repository.Blacklist
+	blacklistMerchantHash *dhash.HashMock
+
+	repo IRepository
 }
 
-func newRepoTest(tc *integration.TestCase) *repoTest {
-	tc.Truncate("blacklist_config")
-	tc.Truncate("blacklist_customer")
-
-	client := cacheclient.New("localhost:11211", 1)
-	err := client.UnsafeFlushAll()
-	if err != nil {
-		panic(err)
-	}
-
-	txProvider := repository.NewProvider(tc.DB)
-
-	blacklistRepo := repository.NewBlacklist()
-
-	mem := memtable.New(100 * 1024)
-
-	dhashProvider := dhash.NewProvider(mem, client)
-	repoProvider := NewRepositoryProvider(dhashProvider, blacklistRepo)
-	repo := repoProvider.NewRepo()
-
+func newRepoTest() *repoTest {
+	sess := &dhash.SessionMock{}
+	blacklistMerchantHash := &dhash.HashMock{}
 	return &repoTest{
-		client:    client,
-		provider:  txProvider,
-		mem:       mem,
-		repo:      repo,
-		blacklist: blacklistRepo,
+		blacklistMerchantHash: blacklistMerchantHash,
+
+		repo: newRepository(sess, nil, blacklistMerchantHash),
 	}
 }
 
-func (r *repoTest) finish() {
-	err := r.client.Close()
-	if err != nil {
-		panic(err)
+func (r *repoTest) stubMerchantSelectEntries(entries []dhash.Entry, err error) {
+	r.blacklistMerchantHash.SelectEntriesFunc = func(ctx context.Context, hash uint32) func() ([]dhash.Entry, error) {
+		return func() ([]dhash.Entry, error) {
+			return entries, err
+		}
 	}
 }
 
-func TestRepository_GetBlacklistCustomer(t *testing.T) {
-	tc := integration.NewTestCase()
-	r := newRepoTest(tc)
-	defer r.finish()
+func TestRepository_GetBlacklistMerchant__Call_Correct_Select_Entries(t *testing.T) {
+	r := newRepoTest()
 
-	err := r.provider.Transact(newContext(), func(ctx context.Context) error {
-		return r.blacklist.UpsertBlacklistCustomers(ctx, []model.BlacklistCustomer{
-			{
-				Hash:      util.HashFunc("0987000111"),
-				Phone:     "0987000111",
-				Status:    model.BlacklistCustomerStatusActive,
-				StartTime: newNullTime("2022-05-08T10:00:00+07:00"),
-				EndTime:   newNullTime("2022-05-18T10:00:00+07:00"),
-			},
-		})
-	})
-	assert.Equal(t, nil, err)
+	r.stubMerchantSelectEntries(nil, nil)
 
-	ctx := r.provider.Readonly(newContext())
+	r.repo.GetBlacklistMerchant(newContext(), "MERCHANT01")
 
-	start := time.Now()
-	fn1 := r.repo.GetBlacklistCustomer(ctx, "0987000111")
-	fn2 := r.repo.GetBlacklistCustomer(ctx, "0987000222")
-
-	customer1, err := fn1()
-	assert.Equal(t, nil, err)
-	assert.Equal(t, model.NullBlacklistCustomer{
-		Valid: true,
-		Customer: model.BlacklistCustomer{
-			Hash:      util.HashFunc("0987000111"),
-			Phone:     "0987000111",
-			Status:    model.BlacklistCustomerStatusActive,
-			StartTime: newNullTime("2022-05-08T10:00:00+07:00"),
-			EndTime:   newNullTime("2022-05-18T10:00:00+07:00"),
-		},
-	}, customer1)
-
-	customer2, err := fn2()
-	assert.Equal(t, nil, err)
-	assert.Equal(t, model.NullBlacklistCustomer{}, customer2)
-
-	fmt.Println("First Get:", time.Since(start))
-
-	// Get Second Times
-	start = time.Now()
-	fn1 = r.repo.GetBlacklistCustomer(ctx, "0987000111")
-	customer1, err = fn1()
-	assert.Equal(t, nil, err)
-	assert.Equal(t, model.NullBlacklistCustomer{
-		Valid: true,
-		Customer: model.BlacklistCustomer{
-			Hash:      util.HashFunc("0987000111"),
-			Phone:     "0987000111",
-			Status:    model.BlacklistCustomerStatusActive,
-			StartTime: newNullTime("2022-05-08T10:00:00+07:00"),
-			EndTime:   newNullTime("2022-05-18T10:00:00+07:00"),
-		},
-	}, customer1)
-	fmt.Println("Second Get:", time.Since(start))
-
-	// Get Mem
-	num, ok := r.mem.GetNum("bl:cst")
-	assert.Equal(t, true, ok)
-	assert.Equal(t, uint64(0), num)
-
-	// Get Cache
-	pipe := r.client.Pipeline()
-	getOutput, err := pipe.Get("bl:cst:size-log")()
-	assert.Equal(t, nil, err)
-	assert.Equal(t, dhash.GetOutput{
-		Found: true, Data: []byte("0"),
-	}, getOutput)
-
-	getOutput, err = pipe.Get("bl:cst:0:00000000")()
-	assert.Equal(t, nil, err)
-	assert.Equal(t, true, getOutput.Found)
-
-	// Get Third Times
-	start = time.Now()
-	fn1 = r.repo.GetBlacklistCustomer(ctx, "0987000111")
-	customer1, err = fn1()
-	assert.Equal(t, nil, err)
-	assert.Equal(t, model.NullBlacklistCustomer{
-		Valid: true,
-		Customer: model.BlacklistCustomer{
-			Hash:      util.HashFunc("0987000111"),
-			Phone:     "0987000111",
-			Status:    model.BlacklistCustomerStatusActive,
-			StartTime: newNullTime("2022-05-08T10:00:00+07:00"),
-			EndTime:   newNullTime("2022-05-18T10:00:00+07:00"),
-		},
-	}, customer1)
-	fmt.Println("Third Get:", time.Since(start))
+	assert.Equal(t, 1, len(r.blacklistMerchantHash.SelectEntriesCalls()))
+	assert.Equal(t, util.HashFunc("MERCHANT01"), r.blacklistMerchantHash.SelectEntriesCalls()[0].Hash)
 }
 
-func TestRepository_GetBlacklistMerchant(t *testing.T) {
-	tc := integration.NewTestCase()
-	r := newRepoTest(tc)
-	defer r.finish()
+func TestRepository_GetBlacklistMerchant__Select_Entries__Returns_Error(t *testing.T) {
+	r := newRepoTest()
 
-	err := r.provider.Transact(newContext(), func(ctx context.Context) error {
-		return r.blacklist.UpsertBlacklistMerchants(ctx, []model.BlacklistMerchant{
-			{
-				Hash:         util.HashFunc("MERCHANT01"),
-				MerchantCode: "MERCHANT01",
-				Status:       model.BlacklistMerchantStatusActive,
-				StartTime:    newNullTime("2022-05-08T10:00:00+07:00"),
-				EndTime:      newNullTime("2022-05-18T10:00:00+07:00"),
-			},
-		})
-	})
+	someErr := errors.New("some error")
+	r.stubMerchantSelectEntries(nil, someErr)
+
+	fn := r.repo.GetBlacklistMerchant(newContext(), "MERCHANT01")
+	merchant, err := fn()
+	assert.Equal(t, someErr, err)
+	assert.Equal(t, model.NullBlacklistMerchant{}, merchant)
+}
+
+func TestRepository_GetBlacklistMerchant__Select_Entries__Returns_Empty(t *testing.T) {
+	r := newRepoTest()
+
+	r.stubMerchantSelectEntries(nil, nil)
+
+	fn := r.repo.GetBlacklistMerchant(newContext(), "MERCHANT01")
+	merchant, err := fn()
 	assert.Equal(t, nil, err)
+	assert.Equal(t, model.NullBlacklistMerchant{}, merchant)
+}
 
-	ctx := r.provider.Readonly(newContext())
+func TestRepository_GetBlacklistMerchant__Select_Entries__Returns_OK(t *testing.T) {
+	r := newRepoTest()
 
-	fn1 := r.repo.GetBlacklistMerchant(ctx, "MERCHANT01")
-	fn2 := r.repo.GetBlacklistMerchant(ctx, "MERCHANT02")
+	merchantCode := "MERCHANT01"
+	hash := util.HashFunc(merchantCode)
 
-	start := time.Now()
+	merchant := model.BlacklistMerchant{
+		Hash:         hash,
+		MerchantCode: merchantCode,
+		Status:       model.BlacklistMerchantStatusActive,
+	}
 
-	merchant1, err := fn1()
+	r.stubMerchantSelectEntries([]dhash.Entry{
+		{
+			Hash: hash,
+			Data: marshalBlacklistMerchant(merchant),
+		},
+	}, nil)
+
+	fn := r.repo.GetBlacklistMerchant(newContext(), merchantCode)
+	nullMerchant, err := fn()
 	assert.Equal(t, nil, err)
 	assert.Equal(t, model.NullBlacklistMerchant{
-		Valid: true,
-		Merchant: model.BlacklistMerchant{
-			Hash:         util.HashFunc("MERCHANT01"),
-			MerchantCode: "MERCHANT01",
-			Status:       model.BlacklistMerchantStatusActive,
-			StartTime:    newNullTime("2022-05-08T10:00:00+07:00"),
-			EndTime:      newNullTime("2022-05-18T10:00:00+07:00"),
+		Valid:    true,
+		Merchant: merchant,
+	}, nullMerchant)
+}
+
+func TestRepository_GetBlacklistMerchant__Select_Entries__Hash_Mismatch(t *testing.T) {
+	r := newRepoTest()
+
+	merchantCode := "MERCHANT01"
+	hash := util.HashFunc(merchantCode)
+
+	merchant := model.BlacklistMerchant{
+		Hash:         hash,
+		MerchantCode: merchantCode,
+		Status:       model.BlacklistMerchantStatusActive,
+	}
+
+	r.stubMerchantSelectEntries([]dhash.Entry{
+		{
+			Hash: hash + 1,
+			Data: marshalBlacklistMerchant(merchant),
 		},
-	}, merchant1)
+	}, nil)
 
-	merchant2, err := fn2()
+	fn := r.repo.GetBlacklistMerchant(newContext(), merchantCode)
+	nullMerchant, err := fn()
 	assert.Equal(t, nil, err)
-	assert.Equal(t, model.NullBlacklistMerchant{}, merchant2)
+	assert.Equal(t, model.NullBlacklistMerchant{}, nullMerchant)
+}
 
-	fmt.Println("First Get:", time.Since(start))
+func TestRepository_GetBlacklistMerchant__Select_Entries__Code_Mismatch(t *testing.T) {
+	r := newRepoTest()
 
-	// Get Second Times
-	start = time.Now()
-	fn1 = r.repo.GetBlacklistMerchant(ctx, "MERCHANT01")
-	merchant1, err = fn1()
+	merchantCode := "MERCHANT01"
+	hash := util.HashFunc(merchantCode)
+
+	merchant := model.BlacklistMerchant{
+		Hash:         hash,
+		MerchantCode: "MERCHANT02",
+		Status:       model.BlacklistMerchantStatusActive,
+	}
+
+	r.stubMerchantSelectEntries([]dhash.Entry{
+		{
+			Hash: hash,
+			Data: marshalBlacklistMerchant(merchant),
+		},
+	}, nil)
+
+	fn := r.repo.GetBlacklistMerchant(newContext(), merchantCode)
+	nullMerchant, err := fn()
 	assert.Equal(t, nil, err)
-	assert.Equal(t, true, merchant1.Valid)
-	fmt.Println("Second Get:", time.Since(start))
-
-	// Get Mem
-	num, ok := r.mem.GetNum("bl:mc")
-	assert.Equal(t, true, ok)
-	assert.Equal(t, uint64(0), num)
-
-	// Get Cache
-	pipe := r.client.Pipeline()
-	getOutput, err := pipe.Get("bl:mc:size-log")()
-	assert.Equal(t, nil, err)
-	assert.Equal(t, dhash.GetOutput{
-		Found: true, Data: []byte("0"),
-	}, getOutput)
-
-	getOutput, err = pipe.Get("bl:mc:0:00000000")()
-	assert.Equal(t, nil, err)
-	assert.Equal(t, true, getOutput.Found)
-
-	// Get Third Times
-	start = time.Now()
-	fn1 = r.repo.GetBlacklistMerchant(ctx, "MERCHANT01")
-	merchant1, err = fn1()
-	assert.Equal(t, nil, err)
-	assert.Equal(t, true, merchant1.Valid)
-	fmt.Println("Third Get:", time.Since(start))
+	assert.Equal(t, model.NullBlacklistMerchant{}, nullMerchant)
 }

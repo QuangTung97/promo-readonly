@@ -30,7 +30,11 @@ var _ dhash.CachePipeline = &Pipeline{}
 
 // New ...
 func New(addr string, numConns int) *Client {
-	client, err := memcache.New(addr, numConns, memcache.WithRetryDuration(10*time.Second))
+	client, err := memcache.New(
+		addr, numConns,
+		memcache.WithRetryDuration(10*time.Second),
+		memcache.WithBufferSize(64*1024),
+	)
 	if err != nil {
 		panic(err)
 	}

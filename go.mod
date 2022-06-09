@@ -3,7 +3,7 @@ module github.com/QuangTung97/promo-readonly
 go 1.16
 
 require (
-	github.com/QuangTung97/go-memcache v0.3.0
+	github.com/QuangTung97/go-memcache v0.3.2
 	github.com/QuangTung97/otelwrap v0.3.1
 	github.com/coocood/freecache v1.2.1
 	github.com/go-sql-driver/mysql v1.5.0

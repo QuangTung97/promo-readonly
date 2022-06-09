@@ -40,6 +40,31 @@ func randInt() int {
 	return int(rand.Int63n(3000000))
 }
 
+func processElements(numElements int, s *readonly.Server, durations *[]time.Duration) {
+	for i := 0; i < numElements; i++ {
+		start := time.Now()
+
+		const inputSize = 10
+		inputs := make([]*promopb.PromoServiceCheckInput, 0, inputSize)
+		for k := 0; k < inputSize; k++ {
+			inputs = append(inputs, &promopb.PromoServiceCheckInput{
+				VoucherCode:  "VOUCHER01",
+				MerchantCode: getMerchantCode(randInt()),
+				TerminalCode: "TERMINAL01",
+				Phone:        getPhone(randInt()),
+			})
+		}
+
+		resp, err := s.Check(context.Background(), &promopb.PromoServiceCheckRequest{
+			Inputs: inputs,
+		})
+		if err != nil {
+			fmt.Println(resp, err)
+		}
+		*durations = append(*durations, time.Since(start))
+	}
+}
+
 func benchWithMemcached() {
 	conf := config.Load()
 	fmt.Println("DBONLY:", conf.DBOnly)
@@ -84,28 +109,7 @@ func benchWithMemcached() {
 		go func() {
 			defer wg.Done()
 
-			for i := 0; i < numElements; i++ {
-				start := time.Now()
-
-				const inputSize = 20
-				inputs := make([]*promopb.PromoServiceCheckInput, 0, inputSize)
-				for k := 0; k < inputSize; k++ {
-					inputs = append(inputs, &promopb.PromoServiceCheckInput{
-						VoucherCode:  "VOUCHER01",
-						MerchantCode: getMerchantCode(randInt()),
-						TerminalCode: "TERMINAL01",
-						Phone:        getPhone(randInt()),
-					})
-				}
-
-				resp, err := server.Check(context.Background(), &promopb.PromoServiceCheckRequest{
-					Inputs: inputs,
-				})
-				if err != nil {
-					fmt.Println(resp, err)
-				}
-				durations[threadIndex] = append(durations[threadIndex], time.Since(start))
-			}
+			processElements(numElements, server, &durations[threadIndex])
 		}()
 	}
 	wg.Wait()

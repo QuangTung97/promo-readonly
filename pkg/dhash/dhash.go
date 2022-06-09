@@ -7,7 +7,9 @@ import (
 	"time"
 )
 
-//go:generate moq -out dash_mocks_test.go . MemTable CacheClient CachePipeline HashDatabase StoreDatabase
+//go:generate moq -out dhash_mocks_test.go . MemTable CacheClient CachePipeline HashDatabase StoreDatabase
+
+//go:generate moq -out dhash_mocks.go . Session Hash
 
 // MemTable for in memory hash table storing size log (with eviction)
 type MemTable interface {

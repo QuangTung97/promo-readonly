@@ -78,6 +78,10 @@ func TestBlacklist_Empty_Keys(t *testing.T) {
 
 	err = repo.UpsertBlacklistTerminals(ctx, nil)
 	assert.Equal(t, nil, err)
+
+	merchants, err = repo.SelectBlacklistMerchants(ctx, nil)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, 0, len(merchants))
 }
 
 func TestBlacklist_Customers(t *testing.T) {
@@ -268,6 +272,45 @@ func TestBlacklist_Merchants(t *testing.T) {
 	// Get Merchants 3
 	//---------------------------------------
 	merchants, err = repo.GetBlacklistMerchants(ctx, []BlacklistMerchantKey{key01, key02})
+	assert.Equal(t, nil, err)
+	assert.Equal(t, upsertMerchants, merchants)
+
+	//---------------------------------------
+	// Select Merchants
+	//---------------------------------------
+	merchants, err = repo.SelectBlacklistMerchants(ctx, []HashRange{
+		{
+			Begin: hash01,
+			End:   newNullUint32(hash01 + 1),
+		},
+		{
+			Begin: hash02,
+			End:   newNullUint32(hash02 + 1),
+		},
+	})
+	assert.Equal(t, nil, err)
+	assert.Equal(t, upsertMerchants, merchants)
+
+	//---------------------------------------
+	// Select Merchants 1
+	//---------------------------------------
+	merchants, err = repo.SelectBlacklistMerchants(ctx, []HashRange{
+		{
+			Begin: hash01,
+			End:   newNullUint32(hash01 + 1),
+		},
+	})
+	assert.Equal(t, nil, err)
+	assert.Equal(t, upsertMerchants[:1], merchants)
+
+	//---------------------------------------
+	// Select Merchants 2
+	//---------------------------------------
+	merchants, err = repo.SelectBlacklistMerchants(ctx, []HashRange{
+		{
+			Begin: hash01,
+		},
+	})
 	assert.Equal(t, nil, err)
 	assert.Equal(t, upsertMerchants, merchants)
 }

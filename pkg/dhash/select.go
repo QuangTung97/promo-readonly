@@ -227,6 +227,8 @@ func (h *hashSelectAction) handleBucketsWithOutput() ([]Entry, error) {
 }
 
 func (h *hashSelectAction) getBucketFromCacheClientForLeasing() {
+	h.root.sess.hashBucketAccessCount++
+
 	key := computeBucketKey(h.root.namespace, int(h.sizeLog.Int64), h.hash)
 	h.bucketLeaseGet = h.root.pipeline.LeaseGet(key)
 	h.root.sess.addNextCall(func() {
@@ -252,6 +254,9 @@ func (h *hashSelectAction) handleGetBucketFromDBWithError() error {
 		h.results = entries
 		return nil
 	}
+
+	h.root.sess.hashBucketMissCount++
+
 	if bucketGetOutput.Type == LeaseGetTypeRejected {
 		sess := h.root.sess
 

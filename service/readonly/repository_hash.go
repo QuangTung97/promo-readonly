@@ -83,6 +83,10 @@ func newBlacklistCustomerHashDB(repo repository.Blacklist) dhash.HashDatabase {
 	})
 }
 
+func newCampaignHashDB(_ repository.Campaign) dhash.HashDatabase {
+	return nil
+}
+
 func marshalBlacklistMerchant(m model.BlacklistMerchant) []byte {
 	msg := promopb.BlacklistMerchantData{
 		Hash:         m.Hash,

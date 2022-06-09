@@ -8,6 +8,9 @@ import (
 )
 
 type hashTest struct {
+	provider *ProviderImpl
+	sess     Session
+
 	mem   *MemTableMock
 	db    *HashDatabaseMock
 	pipe  *CachePipelineMock
@@ -58,12 +61,16 @@ func newHashTest(ns string, options ...SessionOption) *hashTest {
 	p.timer = timer
 
 	db := &HashDatabaseMock{}
+	sess := p.NewSession(options...)
 
 	h := &hashTest{
+		provider: p,
+		sess:     sess,
+
 		mem:   mem,
 		db:    db,
 		pipe:  pipeline,
-		hash:  p.NewSession(options...).NewHash(ns, db),
+		hash:  sess.NewHash(ns, db),
 		timer: timer,
 	}
 
@@ -71,6 +78,10 @@ func newHashTest(ns string, options ...SessionOption) *hashTest {
 	h.stubPipeline()
 	h.stubDB()
 	return h
+}
+
+func (h *hashTest) finish() {
+	h.sess.Finish()
 }
 
 func (h *hashTest) stubMemTable() {
@@ -105,6 +116,7 @@ func (h *hashTest) stubPipeline() {
 	h.pipe.DeleteFunc = func(key string) func() error {
 		return func() error { return nil }
 	}
+	h.pipe.FinishFunc = func() {}
 }
 
 func (h *hashTest) stubDB() {
@@ -240,6 +252,13 @@ func TestSelectEntries__Second_Slot_Found(t *testing.T) {
 	entries, err := h.hash.SelectEntries(newContext(), 0xfc345678)()
 	assert.Equal(t, nil, err)
 	assert.Equal(t, []Entry{newEntry(0xfc345678, 1, 2, 3)}, entries)
+
+	h.finish()
+	assert.Equal(t, 1, len(h.pipe.FinishCalls()))
+	assert.Equal(t, uint64(1), h.provider.HashSizeLogAccessCount())
+	assert.Equal(t, uint64(1), h.provider.HashBucketAccessCount())
+	assert.Equal(t, uint64(0), h.provider.HashSizeLogMissCount())
+	assert.Equal(t, uint64(0), h.provider.HashBucketMissCount())
 }
 
 func TestSelectEntries__First_Slot_Found(t *testing.T) {
@@ -317,6 +336,10 @@ func TestSelectEntries__When_Client_Get_Size_Log_Granted__Call_Get_Size_Log_From
 	_, _ = h.hash.SelectEntries(newContext(), 0xfc345678)()
 	assert.Equal(t, 1, len(h.db.GetSizeLogCalls()))
 	assert.Equal(t, newContext(), h.db.GetSizeLogCalls()[0].Ctx)
+
+	h.finish()
+	assert.Equal(t, uint64(1), h.provider.HashSizeLogAccessCount())
+	assert.Equal(t, uint64(1), h.provider.HashSizeLogMissCount())
 }
 
 func TestSelectEntries__When_Client_Get_Size_Log_Granted__Do_MemTable_SetNum(t *testing.T) {
@@ -335,6 +358,10 @@ func TestSelectEntries__When_Client_Get_Size_Log_Granted__Do_MemTable_SetNum(t *
 	assert.Equal(t, 1, len(h.mem.SetNumCalls()))
 	assert.Equal(t, "sample", h.mem.SetNumCalls()[0].Key)
 	assert.Equal(t, uint64(7), h.mem.SetNumCalls()[0].Num)
+
+	h.finish()
+	assert.Equal(t, uint64(1), h.provider.HashSizeLogAccessCount())
+	assert.Equal(t, uint64(1), h.provider.HashSizeLogMissCount())
 }
 
 func TestSelectEntries__When_Client_Get_Size_Log_Granted__Do_Cache_Client_Lease_Set(t *testing.T) {
@@ -376,6 +403,12 @@ func TestSelectEntries__When_Client_Get_Size_Log_Granted__Returns_Entry_From_Cli
 	assert.Equal(t, []Entry{
 		newEntry(0xfc345678, 1, 2, 3),
 	}, entries)
+
+	h.finish()
+	assert.Equal(t, uint64(1), h.provider.HashSizeLogAccessCount())
+	assert.Equal(t, uint64(1), h.provider.HashBucketAccessCount())
+	assert.Equal(t, uint64(1), h.provider.HashSizeLogMissCount())
+	assert.Equal(t, uint64(0), h.provider.HashBucketMissCount())
 }
 
 func TestSelectEntries__When_Client_Get_Size_Log_Reject__Do_Retries(t *testing.T) {
@@ -410,6 +443,10 @@ func TestSelectEntries__When_Client_Get_Size_Log_Reject__Do_Retries(t *testing.T
 		start.Add(10 * time.Millisecond),
 		start.Add(30 * time.Millisecond),
 	}, h.leaseGetTimes)
+
+	h.finish()
+	assert.Equal(t, uint64(3), h.provider.HashSizeLogAccessCount())
+	assert.Equal(t, uint64(3), h.provider.HashSizeLogMissCount())
 }
 
 func TestSelectEntries__When_Client_Get_Size_Log_Reject__Retries_All_Times(t *testing.T) {
@@ -428,6 +465,10 @@ func TestSelectEntries__When_Client_Get_Size_Log_Reject__Retries_All_Times(t *te
 	assert.Nil(t, entries)
 
 	assert.Equal(t, 4, len(h.pipe.LeaseGetCalls()))
+
+	h.finish()
+	assert.Equal(t, uint64(4), h.provider.HashSizeLogAccessCount())
+	assert.Equal(t, uint64(4), h.provider.HashSizeLogMissCount())
 }
 
 func TestSelectEntries__When_Both_Bucket_Not_Found__Client_Lease_Get(t *testing.T) {
@@ -444,6 +485,9 @@ func TestSelectEntries__When_Both_Bucket_Not_Found__Client_Lease_Get(t *testing.
 	assert.Equal(t, 2, len(h.pipe.LeaseGetCalls()))
 	assert.Equal(t, "sample:size-log", h.pipe.LeaseGetCalls()[0].Key)
 	assert.Equal(t, "sample:5:f8000000", h.pipe.LeaseGetCalls()[1].Key)
+
+	h.finish()
+	assert.Equal(t, uint64(2), h.provider.HashBucketAccessCount())
 }
 
 func TestSelectEntries__When_Client_SizeLog_Too_Different__Get_Buckets_Again(t *testing.T) {
@@ -477,6 +521,10 @@ func TestSelectEntries__When_Client_SizeLog_Too_Different__Get_Buckets_Again(t *
 	assert.Equal(t, []Entry{
 		newEntry(0xdc345678, 8, 8, 8),
 	}, entries)
+
+	h.finish()
+	assert.Equal(t, uint64(2), h.provider.HashBucketAccessCount())
+	assert.Equal(t, uint64(0), h.provider.HashBucketMissCount())
 }
 
 func TestSelectEntries__When_DB_SizeLog_Too_Different__Get_Buckets_Again(t *testing.T) {
@@ -551,6 +599,10 @@ func TestSelectEntries__When_Both_Bucket_Not_Found__Select_Entries_From_DB(t *te
 	assert.Equal(t, 1, len(h.db.SelectEntriesCalls()))
 	assert.Equal(t, uint32(0xd8000000), h.db.SelectEntriesCalls()[0].HashBegin)
 	assert.Equal(t, newNullUint32(0xe0000000), h.db.SelectEntriesCalls()[0].HashEnd)
+
+	h.finish()
+	assert.Equal(t, uint64(2), h.provider.HashBucketAccessCount())
+	assert.Equal(t, uint64(2), h.provider.HashBucketMissCount())
 }
 
 func TestSelectEntries__When_Both_Bucket_Not_Found__Returns_Entry_From_DB__And_Set_ClientCache(t *testing.T) {
@@ -599,6 +651,10 @@ func TestSelectEntries__When_Both_Bucket_Not_Found__Returns_Entry_From_DB__And_S
 	assert.Equal(t, marshalEntries(dbEntries), h.pipe.LeaseSetCalls()[0].Value)
 	assert.Equal(t, uint64(7788), h.pipe.LeaseSetCalls()[0].LeaseID)
 	assert.Equal(t, uint32(0), h.pipe.LeaseSetCalls()[0].TTL)
+
+	h.finish()
+	assert.Equal(t, uint64(2), h.provider.HashBucketAccessCount())
+	assert.Equal(t, uint64(2), h.provider.HashBucketMissCount())
 }
 
 func TestSelectEntries__When_Both_Bucket_Not_Found__Client_Lease_Get_Rejected__Call_Second_Times(t *testing.T) {
@@ -626,6 +682,10 @@ func TestSelectEntries__When_Both_Bucket_Not_Found__Client_Lease_Get_Rejected__C
 	assert.Equal(t, []time.Duration{
 		10 * time.Millisecond,
 	}, h.timer.sleepCalls)
+
+	h.finish()
+	assert.Equal(t, uint64(3), h.provider.HashBucketAccessCount())
+	assert.Equal(t, uint64(3), h.provider.HashBucketMissCount())
 }
 
 func TestSelectEntries__When_Both_Bucket_Not_Found__Client_Lease_Get_Rejected_All_Times__Returns_Err(t *testing.T) {
@@ -661,6 +721,10 @@ func TestSelectEntries__When_Both_Bucket_Not_Found__Client_Lease_Get_Rejected_Al
 		20 * time.Millisecond,
 		50 * time.Millisecond,
 	}, h.timer.sleepCalls)
+
+	h.finish()
+	assert.Equal(t, uint64(5), h.provider.HashBucketAccessCount())
+	assert.Equal(t, uint64(5), h.provider.HashBucketMissCount())
 }
 
 func TestSelectEntries__When_Both_Bucket_Not_Found__Client_Lease_Get_OK__Returns_Client_Entries(t *testing.T) {
@@ -705,6 +769,10 @@ func TestSelectEntries__When_Both_Bucket_Not_Found__Client_Lease_Get_OK__Returns
 	}, h.timer.sleepCalls)
 
 	assert.Equal(t, 0, len(h.db.SelectEntriesCalls()))
+
+	h.finish()
+	assert.Equal(t, uint64(3), h.provider.HashBucketAccessCount())
+	assert.Equal(t, uint64(2), h.provider.HashBucketMissCount())
 }
 
 func TestSelectEntries__When_Request_Size_Log_Duplicated__And_Client_Size_Log_Granted(t *testing.T) {
@@ -750,4 +818,10 @@ func TestSelectEntries__When_Request_Size_Log_Duplicated__And_Client_Size_Log_Gr
 	assert.Equal(t, "sample:size-log", h.pipe.LeaseSetCalls()[0].Key)
 	assert.Equal(t, []byte("5"), h.pipe.LeaseSetCalls()[0].Value)
 	assert.Equal(t, uint64(7788), h.pipe.LeaseSetCalls()[0].LeaseID)
+
+	h.finish()
+	assert.Equal(t, uint64(2), h.provider.HashSizeLogAccessCount())
+	assert.Equal(t, uint64(2), h.provider.HashBucketAccessCount())
+	assert.Equal(t, uint64(2), h.provider.HashSizeLogMissCount())
+	assert.Equal(t, uint64(0), h.provider.HashBucketMissCount())
 }

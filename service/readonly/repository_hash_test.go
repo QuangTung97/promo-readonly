@@ -157,3 +157,8 @@ func TestBlacklistCustomerHashDB__Select_Entries__Returns_Correct_Data(t *testin
 		},
 	}, entries2)
 }
+
+func TestCampaignHashDB__Select_Entries__Returns_Correct_Data(*testing.T) {
+	//repo := &repository.BlacklistMock{}
+	//db := newBlacklistCustomerHashDB(repo)
+}
